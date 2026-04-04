@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections import deque
-from typing import Any
+from typing import Any, Deque, Dict, Optional
 
 import numpy as np
 
@@ -17,9 +17,14 @@ class RANSlicingEnvVar(RANSlicingEnv):
     def __init__(self, alpha: float = 0.3, **kwargs: Any) -> None:
         super().__init__(**kwargs)
         self.alpha = alpha
-        self.throughput_window: deque[float] = deque(maxlen=20)
+        self.throughput_window: Deque[float] = deque(maxlen=20)
 
-    def reset(self, *, seed: int | None = None, options: dict[str, Any] | None = None):
+    def reset(
+        self,
+        *,
+        seed: Optional[int] = None,
+        options: Optional[Dict[str, Any]] = None,
+    ):
         obs, info = super().reset(seed=seed, options=options)
         self.throughput_window.clear()
         return obs, info

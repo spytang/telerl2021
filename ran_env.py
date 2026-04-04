@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections import deque
-from typing import Any
+from typing import Any, Deque, Dict, Optional
 
 import gymnasium as gym
 import numpy as np
@@ -22,7 +22,7 @@ class RANSlicingEnv(gym.Env):
         minislots_per_slot: int = 14,
         lam: float = 0.5,
         deadline_D: int = 3,
-        seed: int | None = None,
+        seed: Optional[int] = None,
     ) -> None:
         super().__init__()
 
@@ -45,7 +45,7 @@ class RANSlicingEnv(gym.Env):
         )
 
         self._rng = np.random.default_rng(seed)
-        self._queue: deque[int] = deque()
+        self._queue: Deque[int] = deque()
         self._t = 0
         self._slot_idx = 0
         self._puncture_counts = np.zeros(self.F, dtype=np.int32)
@@ -68,7 +68,12 @@ class RANSlicingEnv(gym.Env):
         obs = np.concatenate(([queue_len_norm, min_deadline_norm], puncture_norm)).astype(np.float32)
         return obs
 
-    def reset(self, *, seed: int | None = None, options: dict[str, Any] | None = None):
+    def reset(
+        self,
+        *,
+        seed: Optional[int] = None,
+        options: Optional[Dict[str, Any]] = None,
+    ):
         super().reset(seed=seed)
         if seed is not None:
             self._rng = np.random.default_rng(seed)
@@ -110,7 +115,7 @@ class RANSlicingEnv(gym.Env):
                 embb_outages_this_step += 1
 
         # Deadline progression and violation accounting.
-        updated_queue: deque[int] = deque()
+        updated_queue: Deque[int] = deque()
         urllc_latency_violations = 0
         while self._queue:
             rem = self._queue.popleft() - 1

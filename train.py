@@ -1,6 +1,7 @@
 """Train PPO agents for RAN slicing and compare against fixed round-robin."""
 
 import os
+from typing import Dict, List, Optional, Tuple, Union
 
 import gymnasium as gym
 import numpy as np
@@ -12,13 +13,15 @@ from ran_env import RANSlicingEnv
 from ran_env_var import RANSlicingEnvVar
 
 
-def evaluate_policy_on_baseline_env(model: PPO, n_episodes: int = 100) -> dict[str, np.ndarray]:
+def evaluate_policy_on_baseline_env(
+    model: PPO, n_episodes: int = 100
+) -> Dict[str, np.ndarray]:
     """Evaluate a PPO model on RANSlicingEnv for apples-to-apples comparison."""
     env = RANSlicingEnv()
 
-    rewards: list[float] = []
-    violations: list[int] = []
-    outages: list[int] = []
+    rewards: List[float] = []
+    violations: List[int] = []
+    outages: List[int] = []
 
     for ep in range(n_episodes):
         obs, _ = env.reset(seed=42 + ep)
@@ -48,13 +51,13 @@ def evaluate_policy_on_baseline_env(model: PPO, n_episodes: int = 100) -> dict[s
     }
 
 
-def evaluate_fixed_rr(n_episodes: int = 100) -> dict[str, np.ndarray]:
+def evaluate_fixed_rr(n_episodes: int = 100) -> Dict[str, np.ndarray]:
     """Evaluate fixed round-robin policy: action(t) = t % 12."""
     env = RANSlicingEnv()
 
-    rewards: list[float] = []
-    violations: list[int] = []
-    outages: list[int] = []
+    rewards: List[float] = []
+    violations: List[int] = []
+    outages: List[int] = []
 
     for ep in range(n_episodes):
         obs, _ = env.reset(seed=42 + ep)
@@ -87,7 +90,7 @@ def evaluate_fixed_rr(n_episodes: int = 100) -> dict[str, np.ndarray]:
     }
 
 
-def summarize(metrics: dict[str, np.ndarray]) -> tuple[float, float, float, float]:
+def summarize(metrics: Dict[str, np.ndarray]) -> Tuple[float, float, float, float]:
     rewards = metrics["rewards"]
     violations = metrics["violations"]
     outages = metrics["outages"]
