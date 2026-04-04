@@ -5,6 +5,7 @@ from typing import Dict, List, Tuple
 
 import matplotlib.pyplot as plt
 import numpy as np
+import pandas as pd
 from stable_baselines3 import PPO
 
 from ran_env import RANSlicingEnv
@@ -127,6 +128,10 @@ def format_mean_std(mean: float, std: float) -> str:
     return f"{mean:.3f} $\\pm$ {std:.3f}"
 
 
+def format_mean_std_sci(mean: float, std: float) -> str:
+    return f"{mean:.2e} $\\pm$ {std:.2e}"
+
+
 def main() -> None:
     apply_style()
 
@@ -136,6 +141,8 @@ def main() -> None:
 
     baseline_ts, baseline_mean, baseline_std = load_eval_curve("./logs/baseline_ppo/evaluations.npz")
     var_ts, var_mean, var_std = load_eval_curve("./logs/var_ppo/evaluations.npz")
+    baseline_mean_smooth = pd.Series(baseline_mean).rolling(window=5, min_periods=1, center=True).mean().values
+    var_mean_smooth = pd.Series(var_mean).rolling(window=5, min_periods=1, center=True).mean().values
 
     os.makedirs("./figures", exist_ok=True)
 
@@ -146,7 +153,7 @@ def main() -> None:
     plt.figure(figsize=(8, 5))
     plt.plot(
         baseline_ts,
-        baseline_mean,
+        baseline_mean_smooth,
         color="blue",
         linewidth=linewidth,
         label="PPO (Baseline Reward)",
@@ -155,7 +162,7 @@ def main() -> None:
 
     plt.plot(
         var_ts,
-        var_mean,
+        var_mean_smooth,
         color="orange",
         linewidth=linewidth,
         label="PPO (Variance-Penalized)",
@@ -180,7 +187,6 @@ def main() -> None:
     }
     colors = {"fixed_rr": "gray", "baseline_ppo": "steelblue", "var_ppo": "darkorange"}
 
-    metric_labels = ["URLLC Violation Rate", "eMBB Outage Rate", "eMBB Throughput Variance"]
     means_per_agent = {
         "fixed_rr": [
             np.mean(rr_metrics["total_violations"] / EPISODE_LENGTH),
@@ -216,27 +222,31 @@ def main() -> None:
         ],
     }
 
-    x = np.arange(len(metric_labels))
-    width = 0.24
+    fig, axes = plt.subplots(1, 3, figsize=(14, 5))
+    x = np.arange(len(agents))
+    subplot_titles = [
+        "URLLC Violation Rate",
+        "eMBB Outage Rate",
+        "eMBB Throughput Variance",
+    ]
 
-    plt.figure(figsize=(9, 5.5))
-    for idx, agent in enumerate(agents):
-        offset = (idx - 1) * width
-        plt.bar(
-            x + offset,
-            means_per_agent[agent],
-            width,
-            yerr=std_per_agent[agent],
+    for metric_idx, ax in enumerate(axes):
+        vals = [means_per_agent[agent][metric_idx] for agent in agents]
+        errs = [std_per_agent[agent][metric_idx] for agent in agents]
+        ax.bar(
+            x,
+            vals,
+            yerr=errs,
             capsize=4,
-            color=colors[agent],
-            label=agent,
+            color=[colors[agent] for agent in agents],
         )
+        ax.set_xticks(x)
+        ax.set_xticklabels(agents, fontsize=fontsize)
+        ax.set_title(subplot_titles[metric_idx], fontsize=fontsize)
+        ax.set_ylabel("Value", fontsize=fontsize)
 
-    plt.xticks(x, metric_labels, fontsize=fontsize)
-    plt.ylabel("Value", fontsize=fontsize)
-    plt.title("Per-Agent Performance Metrics", fontsize=fontsize)
-    plt.legend(fontsize=fontsize)
-    plt.tight_layout()
+    fig.suptitle("Per-Agent Performance Metrics", fontsize=fontsize)
+    fig.tight_layout(rect=[0, 0, 1, 0.95])
     plt.savefig("./figures/performance_bar.png", dpi=200)
     plt.savefig("./figures/performance_bar.pdf")
     plt.close()
@@ -255,6 +265,8 @@ def main() -> None:
         jitter = rng.uniform(-0.12, 0.12, size=len(values))
         plt.scatter(np.full_like(values, i, dtype=np.float64) + jitter, values, alpha=0.3, s=4, c="black")
 
+    ax = plt.gca()
+    ax.yaxis.set_major_formatter(plt.FuncFormatter(lambda x, _: f"{x:.1e}"))
     plt.ylabel("Per-Episode eMBB Throughput Variance", fontsize=fontsize)
     plt.title("Distribution of eMBB Throughput Variance per Episode", fontsize=fontsize)
     plt.tight_layout()
@@ -310,7 +322,7 @@ def main() -> None:
         reward_str = format_mean_std(float(row["reward_mean"]), float(row["reward_std"]))
         viol_str = format_mean_std(float(row["viol_mean"]), float(row["viol_std"]))
         out_str = format_mean_std(float(row["out_mean"]), float(row["out_std"]))
-        var_str = format_mean_std(float(row["var_mean"]), float(row["var_std"]))
+        var_str = format_mean_std_sci(float(row["var_mean"]), float(row["var_std"]))
 
         if np.isclose(row["reward_mean"], reward_best):
             reward_str = f"\\textbf{{{reward_str}}}"
