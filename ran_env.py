@@ -20,7 +20,7 @@ class RANSlicingEnv(gym.Env):
         F: int = 12,
         Sigma: int = 10,
         minislots_per_slot: int = 14,
-        lam: float = 0.5,
+        arrival_rate: float = 0.5,
         deadline_D: int = 3,
         seed: Optional[int] = None,
     ) -> None:
@@ -30,7 +30,7 @@ class RANSlicingEnv(gym.Env):
         self.Sigma = Sigma
         self.minislots_per_slot = minislots_per_slot
         self.T = self.Sigma * self.minislots_per_slot
-        self.lam = lam
+        self.arrival_rate = arrival_rate
         self.deadline_D = deadline_D
 
         # Actions: 0..F-1 puncture selected subcarrier, F means defer.
@@ -97,7 +97,7 @@ class RANSlicingEnv(gym.Env):
             self._init_slot_codewords()
 
         # New URLLC arrivals for this minislot.
-        arrivals = int(self._rng.poisson(self.lam))
+        arrivals = int(self._rng.poisson(self.arrival_rate))
         for _ in range(arrivals):
             self._queue.append(self.deadline_D)
 
