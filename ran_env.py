@@ -101,6 +101,11 @@ class RANSlicingEnv(gym.Env):
         for _ in range(arrivals):
             self._queue.append(self.deadline_D)
 
+        if action == self.F:
+            min_deadline = min(self._queue) if self._queue else float("inf")
+            if min_deadline <= 1:
+                action = int(np.argmin(self._puncture_counts))
+
         embb_outages_this_step = 0
 
         # Serve at most one packet, prioritizing oldest (FIFO queue).
@@ -125,7 +130,12 @@ class RANSlicingEnv(gym.Env):
                 updated_queue.append(rem)
         self._queue = updated_queue
 
-        reward = -1.0 * urllc_latency_violations - 0.5 * embb_outages_this_step
+        embb_throughput = (self.F - embb_outages_this_step) / self.F
+        reward = (
+            -1.0 * urllc_latency_violations
+            - 0.5 * embb_outages_this_step
+            + 0.3 * embb_throughput
+        )
 
         self._t += 1
         terminated = self._t >= self.T
@@ -137,6 +147,7 @@ class RANSlicingEnv(gym.Env):
             "queue_length": len(self._queue),
             "urllc_latency_violations": urllc_latency_violations,
             "embb_outages_this_step": embb_outages_this_step,
+            "embb_throughput": embb_throughput,
             "slot_idx": self._slot_idx,
         }
 

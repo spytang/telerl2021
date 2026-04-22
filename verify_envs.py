@@ -67,6 +67,32 @@ def assert_variance_env_reward_bounded(episodes: int = 5, seed_offset: int = 100
             done = (base_terminated or base_truncated) and (var_terminated or var_truncated)
 
 
+def state_normalization_diagnostic(episodes: int = 5, seed_offset: int = 2000) -> None:
+    env = RANSlicingEnv()
+    all_states = []
+
+    for ep in range(episodes):
+        obs, _ = env.reset(seed=seed_offset + ep)
+        done = False
+
+        while not done:
+            all_states.append(obs)
+            action = env.action_space.sample()
+            obs, _, terminated, truncated, _ = env.step(action)
+            done = terminated or truncated
+
+    env.close()
+
+    states = np.asarray(all_states, dtype=np.float64)
+    means = states.mean(axis=0)
+    stds = states.std(axis=0)
+
+    print("\nState normalization diagnostic (RANSlicingEnv, random policy, 5 episodes):")
+    for idx, (mean, std) in enumerate(zip(means, stds)):
+        flag = " <-- potentially poorly normalized" if (mean < 0.05 or mean > 0.95) else ""
+        print(f"  dim[{idx:02d}] mean={mean:.6f}, std={std:.6f}{flag}")
+
+
 def main() -> None:
     print("Running Gymnasium check_env()...")
     check_env(RANSlicingEnv())
@@ -94,6 +120,8 @@ def main() -> None:
 
     assert_variance_env_reward_bounded(episodes=5, seed_offset=1000)
     print("Assertion passed: RANSlicingEnvVar reward is always <= baseline reward.")
+
+    state_normalization_diagnostic(episodes=5, seed_offset=2000)
 
 
 if __name__ == "__main__":

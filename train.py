@@ -109,14 +109,18 @@ def main() -> None:
     os.makedirs("./models", exist_ok=True)
     os.makedirs("./logs/baseline_ppo", exist_ok=True)
     os.makedirs("./logs/var_ppo", exist_ok=True)
+    os.makedirs("./logs/var_ppo_low_alpha", exist_ok=True)
     os.makedirs("./models/baseline_ppo", exist_ok=True)
     os.makedirs("./models/var_ppo", exist_ok=True)
+    os.makedirs("./models/var_ppo_low_alpha", exist_ok=True)
 
     env_baseline = RANSlicingEnv()
-    env_var = RANSlicingEnvVar(alpha=1.0)
+    env_var = RANSlicingEnvVar(alpha=0.05)
+    env_var_low_alpha = RANSlicingEnvVar(alpha=0.01)
 
     eval_env_baseline = Monitor(RANSlicingEnv())
-    eval_env_var = Monitor(RANSlicingEnvVar(alpha=1.0))
+    eval_env_var = Monitor(RANSlicingEnvVar(alpha=0.05))
+    eval_env_var_low_alpha = Monitor(RANSlicingEnvVar(alpha=0.01))
 
     callback_baseline = EvalCallback(
         eval_env_baseline,
@@ -136,15 +140,27 @@ def main() -> None:
         deterministic=True,
         verbose=0,
     )
+    callback_var_low_alpha = EvalCallback(
+        eval_env_var_low_alpha,
+        n_eval_episodes=20,
+        eval_freq=5000,
+        log_path="./logs/var_ppo_low_alpha/",
+        best_model_save_path="./models/var_ppo_low_alpha/",
+        deterministic=True,
+        verbose=0,
+    )
 
     model_baseline = PPO(
         "MlpPolicy",
         env_baseline,
         policy_kwargs={"net_arch": [64, 64]},
-        n_steps=1400,
-        batch_size=140,
+        n_steps=2048,
+        batch_size=64,
         n_epochs=10,
         learning_rate=3e-4,
+        ent_coef=0.01,
+        vf_coef=0.5,
+        max_grad_norm=0.5,
         seed=42,
         verbose=1,
     )
@@ -153,30 +169,52 @@ def main() -> None:
         "MlpPolicy",
         env_var,
         policy_kwargs={"net_arch": [64, 64]},
-        n_steps=1400,
-        batch_size=140,
+        n_steps=2048,
+        batch_size=64,
         n_epochs=10,
         learning_rate=3e-4,
+        ent_coef=0.01,
+        vf_coef=0.5,
+        max_grad_norm=0.5,
+        seed=42,
+        verbose=1,
+    )
+
+    model_var_low_alpha = PPO(
+        "MlpPolicy",
+        env_var_low_alpha,
+        policy_kwargs={"net_arch": [64, 64]},
+        n_steps=2048,
+        batch_size=64,
+        n_epochs=10,
+        learning_rate=3e-4,
+        ent_coef=0.01,
+        vf_coef=0.5,
+        max_grad_norm=0.5,
         seed=42,
         verbose=1,
     )
 
     model_baseline.learn(total_timesteps=200_000, callback=callback_baseline)
     model_var.learn(total_timesteps=200_000, callback=callback_var)
+    model_var_low_alpha.learn(total_timesteps=200_000, callback=callback_var_low_alpha)
 
     model_baseline.save("./models/baseline_ppo/final_model")
     model_var.save("./models/var_ppo/final_model")
+    model_var_low_alpha.save("./models/var_ppo_low_alpha/final_model")
 
     metrics_rr = evaluate_fixed_rr(n_episodes=100)
     metrics_baseline = evaluate_policy_on_baseline_env(model_baseline, n_episodes=100)
     metrics_var = evaluate_policy_on_baseline_env(model_var, n_episodes=100)
+    metrics_var_low_alpha = evaluate_policy_on_baseline_env(model_var_low_alpha, n_episodes=100)
 
     rr_summary = summarize(metrics_rr)
     baseline_summary = summarize(metrics_baseline)
     var_summary = summarize(metrics_var)
+    var_low_alpha_summary = summarize(metrics_var_low_alpha)
 
-    print("\nAgent         | Mean Reward | Std Reward | Mean Violations | Mean Outages")
-    print("-" * 72)
+    print("\nAgent              | Mean Reward | Std Reward | Mean Violations | Mean Outages")
+    print("-" * 79)
     print(
         f"fixed_rr      | {rr_summary[0]:11.3f} | {rr_summary[1]:10.3f} |"
         f" {rr_summary[2]:15.3f} | {rr_summary[3]:12.3f}"
@@ -186,14 +224,20 @@ def main() -> None:
         f" {baseline_summary[2]:15.3f} | {baseline_summary[3]:12.3f}"
     )
     print(
-        f"var_ppo       | {var_summary[0]:11.3f} | {var_summary[1]:10.3f} |"
+        f"var_ppo            | {var_summary[0]:11.3f} | {var_summary[1]:10.3f} |"
         f" {var_summary[2]:15.3f} | {var_summary[3]:12.3f}"
+    )
+    print(
+        f"var_ppo_low_alpha  | {var_low_alpha_summary[0]:11.3f} | {var_low_alpha_summary[1]:10.3f} |"
+        f" {var_low_alpha_summary[2]:15.3f} | {var_low_alpha_summary[3]:12.3f}"
     )
 
     env_baseline.close()
     env_var.close()
+    env_var_low_alpha.close()
     eval_env_baseline.close()
     eval_env_var.close()
+    eval_env_var_low_alpha.close()
 
 
 if __name__ == "__main__":
