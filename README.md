@@ -72,12 +72,11 @@ The simulation follows the Saggese et al. problem setting with explicit fixed pa
 
 ### State, Action, Reward
 
-- **State** (dimension `4 + F = 16`, normalized to `[0,1]`):
+- **State** (dimension `3 + F = 15`, normalized to `[0,1]`):
   1. URLLC queue length
   2. Minimum remaining deadline in queue
-  3. Episode phase (`t/T`)
-  4. Slot phase (`(t mod 14)/14`)
-  5. Per-codeword puncture counters (12 values)
+  3. Slot phase (`(t mod 14)/14`)
+  4. Per-codeword puncture counters (12 values)
 
 - **Action space** (`Discrete(F + 1) = 13`):
   - `0..11`: puncture selected subcarrier for oldest URLLC packet

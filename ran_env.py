@@ -36,12 +36,12 @@ class RANSlicingEnv(gym.Env):
         # Actions: 0..F-1 puncture selected subcarrier, F means defer.
         self.action_space = spaces.Discrete(self.F + 1)
 
-        # State: [queue_len, min_deadline, episode_phase, slot_phase, puncture_counts(F)]
+        # State: [queue_len, min_deadline, slot_phase, puncture_counts(F)]
         # all normalized to [0,1].
         self.observation_space = spaces.Box(
             low=0.0,
             high=1.0,
-            shape=(4 + self.F,),
+            shape=(3 + self.F,),
             dtype=np.float32,
         )
 
@@ -65,11 +65,12 @@ class RANSlicingEnv(gym.Env):
         else:
             min_deadline_norm = 0.0
 
-        episode_phase_norm = self._t / self.T
+        # Slot/mini-slot timing is available to the scheduler from the frame clock.
+        # We intentionally avoid exposing full-episode phase to reduce horizon leakage.
         slot_phase_norm = (self._t % self.minislots_per_slot) / self.minislots_per_slot
         puncture_norm = np.clip(self._puncture_counts / self.minislots_per_slot, 0.0, 1.0)
         obs = np.concatenate(
-            ([queue_len_norm, min_deadline_norm, episode_phase_norm, slot_phase_norm], puncture_norm)
+            ([queue_len_norm, min_deadline_norm, slot_phase_norm], puncture_norm)
         ).astype(np.float32)
         return obs
 
