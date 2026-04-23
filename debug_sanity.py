@@ -49,7 +49,7 @@ def urgency_aware_policy(env: RANSlicingEnv, obs: np.ndarray) -> int:
     """
     queue_len_norm = float(obs[0])
     min_deadline_norm = float(obs[1])
-    puncture_norm = obs[2:]
+    puncture_norm = obs[-env.F :]
 
     if queue_len_norm <= 0.0:
         return env.F

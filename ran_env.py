@@ -36,11 +36,12 @@ class RANSlicingEnv(gym.Env):
         # Actions: 0..F-1 puncture selected subcarrier, F means defer.
         self.action_space = spaces.Discrete(self.F + 1)
 
-        # State: [queue_len, min_deadline, puncture_counts(F)] all normalized to [0,1].
+        # State: [queue_len, min_deadline, episode_phase, slot_phase, puncture_counts(F)]
+        # all normalized to [0,1].
         self.observation_space = spaces.Box(
             low=0.0,
             high=1.0,
-            shape=(2 + self.F,),
+            shape=(4 + self.F,),
             dtype=np.float32,
         )
 
@@ -64,8 +65,12 @@ class RANSlicingEnv(gym.Env):
         else:
             min_deadline_norm = 0.0
 
+        episode_phase_norm = self._t / self.T
+        slot_phase_norm = (self._t % self.minislots_per_slot) / self.minislots_per_slot
         puncture_norm = np.clip(self._puncture_counts / self.minislots_per_slot, 0.0, 1.0)
-        obs = np.concatenate(([queue_len_norm, min_deadline_norm], puncture_norm)).astype(np.float32)
+        obs = np.concatenate(
+            ([queue_len_norm, min_deadline_norm, episode_phase_norm, slot_phase_norm], puncture_norm)
+        ).astype(np.float32)
         return obs
 
     def reset(
@@ -136,7 +141,7 @@ class RANSlicingEnv(gym.Env):
         reward = (
             1.0 * served_urllc
             - 2.0 * urllc_latency_violations
-            - 1.0 * embb_outages_this_step
+            - 2.0 * embb_outages_this_step
             - 0.02 * len(self._queue)
             - 0.05 * defer_with_backlog
         )

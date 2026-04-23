@@ -72,10 +72,12 @@ The simulation follows the Saggese et al. problem setting with explicit fixed pa
 
 ### State, Action, Reward
 
-- **State** (dimension `2 + F = 14`, normalized to `[0,1]`):
+- **State** (dimension `4 + F = 16`, normalized to `[0,1]`):
   1. URLLC queue length
   2. Minimum remaining deadline in queue
-  3. Per-codeword puncture counters (12 values)
+  3. Episode phase (`t/T`)
+  4. Slot phase (`(t mod 14)/14`)
+  5. Per-codeword puncture counters (12 values)
 
 - **Action space** (`Discrete(F + 1) = 13`):
   - `0..11`: puncture selected subcarrier for oldest URLLC packet
@@ -119,7 +121,7 @@ Motivation: variance regularization encourages smoother puncturing patterns and 
 
 - policy: `MlpPolicy`
 - network: `net_arch=[64, 64]`
-- `n_steps=1400` (10 episodes per rollout)
+- `n_steps=560` (4 episodes per rollout)
 - `batch_size=140`
 - `n_epochs=10`
 - `learning_rate=3e-4`
