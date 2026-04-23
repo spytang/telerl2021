@@ -158,6 +158,20 @@ It generates publication-style figures in both PNG and PDF under `./figures/`:
 3. **Distribution of eMBB Throughput Variance** (`variance_dist.*`)
    - boxplot across agents
 
+If you want per-figure numeric exports for downstream LLM analysis, run:
+
+```bash
+python export_llm_data.py --output-dir ./llm_exports --episodes 100
+```
+
+This writes:
+
+- `figure1_training_curves.csv` (training curves, smoothed means, and confidence bands)
+- `figure2_performance_summary.csv` (bar-chart aggregates with mean/std)
+- `figure2_per_episode_metrics.csv` (raw per-episode values used for aggregation)
+- `figure3_variance_distribution.csv` (source values for variance distribution plot)
+- `manifest.json` (metadata and file map)
+
 Plot style conventions:
 
 - `plt.style.use("seaborn-v0_8-paper")`
