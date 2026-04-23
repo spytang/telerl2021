@@ -101,16 +101,14 @@ class RANSlicingEnv(gym.Env):
         for _ in range(arrivals):
             self._queue.append(self.deadline_D)
 
-        if action == self.F:
-            min_deadline = min(self._queue) if self._queue else float("inf")
-            if min_deadline <= 1:
-                action = int(np.argmin(self._puncture_counts))
-
+        queue_len_before = len(self._queue)
         embb_outages_this_step = 0
+        served_urllc = 0
 
         # Serve at most one packet, prioritizing oldest (FIFO queue).
         if self._queue and action < self.F:
             self._queue.popleft()
+            served_urllc = 1
             self._puncture_counts[action] += 1
             if (
                 not self._cw_outage_flags[action]
@@ -131,10 +129,16 @@ class RANSlicingEnv(gym.Env):
         self._queue = updated_queue
 
         embb_throughput = (self.F - embb_outages_this_step) / self.F
+
+        # Reward shaping emphasizes latency reliability and keeps eMBB harm bounded.
+        # A dense service bonus helps PPO discover that puncturing can be useful.
+        defer_with_backlog = int(action == self.F and queue_len_before > 0)
         reward = (
-            -1.0 * urllc_latency_violations
-            - 0.5 * embb_outages_this_step
-            + 0.3 * embb_throughput
+            1.0 * served_urllc
+            - 2.0 * urllc_latency_violations
+            - 1.0 * embb_outages_this_step
+            - 0.02 * len(self._queue)
+            - 0.05 * defer_with_backlog
         )
 
         self._t += 1
@@ -148,6 +152,9 @@ class RANSlicingEnv(gym.Env):
             "urllc_latency_violations": urllc_latency_violations,
             "embb_outages_this_step": embb_outages_this_step,
             "embb_throughput": embb_throughput,
+            "served_urllc": served_urllc,
+            "defer_with_backlog": defer_with_backlog,
+            "base_reward": float(reward),
             "slot_idx": self._slot_idx,
         }
 

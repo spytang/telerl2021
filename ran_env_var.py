@@ -32,15 +32,8 @@ class RANSlicingEnvVar(RANSlicingEnv):
     def step(self, action: int):
         obs, _, terminated, truncated, info = super().step(action)
 
-        urllc_latency_violations = info["urllc_latency_violations"]
-        embb_outages_this_step = info["embb_outages_this_step"]
-        embb_throughput = (self.F - embb_outages_this_step) / self.F
-
-        base_reward = (
-            -1.0 * urllc_latency_violations
-            - 0.5 * embb_outages_this_step
-            + 0.3 * embb_throughput
-        )
+        embb_throughput = info["embb_throughput"]
+        base_reward = info["base_reward"]
 
         self.throughput_window.append(embb_throughput)
 
