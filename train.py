@@ -115,12 +115,12 @@ def main() -> None:
     os.makedirs("./models/var_ppo_low_alpha", exist_ok=True)
 
     env_baseline = RANSlicingEnv()
-    env_var = RANSlicingEnvVar(alpha=0.05)
-    env_var_low_alpha = RANSlicingEnvVar(alpha=0.01)
+    env_var = RANSlicingEnvVar(alpha=0.02, beta=0.12, window_size=20)
+    env_var_low_alpha = RANSlicingEnvVar(alpha=0.01, beta=0.08, window_size=20)
 
     eval_env_baseline = Monitor(RANSlicingEnv())
-    eval_env_var = Monitor(RANSlicingEnvVar(alpha=0.05))
-    eval_env_var_low_alpha = Monitor(RANSlicingEnvVar(alpha=0.01))
+    eval_env_var = Monitor(RANSlicingEnvVar(alpha=0.02, beta=0.12, window_size=20))
+    eval_env_var_low_alpha = Monitor(RANSlicingEnvVar(alpha=0.01, beta=0.08, window_size=20))
 
     callback_baseline = EvalCallback(
         eval_env_baseline,
@@ -171,11 +171,12 @@ def main() -> None:
         policy_kwargs={"net_arch": [64, 64]},
         n_steps=560,
         batch_size=140,
-        n_epochs=10,
-        learning_rate=3e-4,
-        ent_coef=0.005,
-        vf_coef=0.5,
+        n_epochs=12,
+        learning_rate=1.5e-4,
+        ent_coef=0.001,
+        vf_coef=0.6,
         max_grad_norm=0.5,
+        clip_range=0.15,
         seed=42,
         verbose=1,
     )
@@ -186,16 +187,23 @@ def main() -> None:
         policy_kwargs={"net_arch": [64, 64]},
         n_steps=560,
         batch_size=140,
-        n_epochs=10,
-        learning_rate=3e-4,
-        ent_coef=0.005,
-        vf_coef=0.5,
+        n_epochs=12,
+        learning_rate=1.5e-4,
+        ent_coef=0.001,
+        vf_coef=0.6,
         max_grad_norm=0.5,
+        clip_range=0.15,
         seed=42,
         verbose=1,
     )
 
     model_baseline.learn(total_timesteps=200_000, callback=callback_baseline)
+
+    # Warm-start risk-aware models from baseline PPO to avoid unstable early drift.
+    baseline_params = model_baseline.get_parameters()
+    model_var.set_parameters(baseline_params, exact_match=False)
+    model_var_low_alpha.set_parameters(baseline_params, exact_match=False)
+
     model_var.learn(total_timesteps=200_000, callback=callback_var)
     model_var_low_alpha.learn(total_timesteps=200_000, callback=callback_var_low_alpha)
 

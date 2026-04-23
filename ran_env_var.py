@@ -1,4 +1,4 @@
-"""Variant RAN slicing environment with throughput-variance penalty."""
+"""Variant RAN slicing environment with risk-aware reward shaping."""
 
 from __future__ import annotations
 
@@ -11,13 +11,28 @@ from ran_env import RANSlicingEnv
 
 
 class RANSlicingEnvVar(RANSlicingEnv):
-    """Variance penalty encourages risk-averse puncturing, distributing
-    eMBB disruption evenly across codewords (Alsenwi et al., 2021)."""
+    """Risk-aware variant used to train a stabler policy than vanilla PPO.
 
-    def __init__(self, alpha: float = 0.05, **kwargs: Any) -> None:
+    The reward keeps the original objective but adds two smooth penalties:
+    1) short-term eMBB throughput variance, and
+    2) puncturing imbalance across subcarriers inside the current slot.
+
+    This nudges PPO away from repeatedly puncturing one subcarrier, which is
+    a common failure mode that creates outages and unstable learning curves.
+    """
+
+    def __init__(
+        self,
+        alpha: float = 0.02,
+        beta: float = 0.12,
+        window_size: int = 20,
+        **kwargs: Any,
+    ) -> None:
         super().__init__(**kwargs)
         self.alpha = alpha
-        self.throughput_window: Deque[float] = deque(maxlen=20)
+        self.beta = beta
+        self.window_size = window_size
+        self.throughput_window: Deque[float] = deque(maxlen=self.window_size)
 
     def reset(
         self,
@@ -38,9 +53,14 @@ class RANSlicingEnvVar(RANSlicingEnv):
         self.throughput_window.append(embb_throughput)
 
         if len(self.throughput_window) >= 2:
-            variance_penalty = self.alpha * np.var(self.throughput_window)
+            variance_penalty = self.alpha * float(np.var(self.throughput_window))
         else:
             variance_penalty = 0.0
 
-        reward = base_reward - variance_penalty
+        puncture_imbalance = float(np.std(self._puncture_counts / self.minislots_per_slot))
+        imbalance_penalty = self.beta * puncture_imbalance
+
+        reward = base_reward - variance_penalty - imbalance_penalty
+        info["variance_penalty"] = variance_penalty
+        info["imbalance_penalty"] = imbalance_penalty
         return obs, float(reward), terminated, truncated, info
