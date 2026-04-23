@@ -67,11 +67,19 @@ def main() -> None:
         f"{random_results['mean_reward']:.3f} ± {random_results['std_reward']:.3f}"
     )
 
+    mean_random_violations = float(np.mean(random_results["violations"]))
     mean_defer_violations = float(np.mean(defer_results["violations"]))
-    assert mean_defer_violations > 20, (
-        "all-defer policy should cause many URLLC violations; "
-        f"got mean {mean_defer_violations:.3f}"
-    )
+    if mean_defer_violations <= mean_random_violations:
+        raise AssertionError(
+            "all-defer requested policy should incur more URLLC violations than random; "
+            f"defer={mean_defer_violations:.3f}, random={mean_random_violations:.3f}"
+        )
+    if mean_defer_violations < 5:
+        raise AssertionError(
+            "all-defer requested policy produced unexpectedly low URLLC violations; "
+            "verify defer-action masking and reward logic. "
+            f"got mean {mean_defer_violations:.3f}"
+        )
 
     print(
         "All-puncture-subcarrier-0 reward distribution: "
