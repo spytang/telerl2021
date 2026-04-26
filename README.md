@@ -231,7 +231,33 @@ python evaluate_and_plot.py
 python robustness_test.py
 ```
 
+### 7) Build analysis bundle for next Codex round
+
+```bash
+python tools/build_analysis_bundle.py
+```
+
+Then hand over `analysis_bundle/` to Codex for the next round analysis.
+
+### Baseline/Reproducibility Principle (Important)
+
+- Default baseline must remain unchanged and reproducible:
+  - traffic model: **Poisson arrival**
+  - reward profile: **default reward**
+- Research mode can reserve explicit interfaces for variants (e.g., `--mode`, `--traffic-model`, `--reward-profile`),
+  but any variant must be clearly labeled, comparable against baseline, and reversible.
+- Variants must never be presented as baseline results.
+
 ---
+
+## Quick Run Sequence
+
+```bash
+python train.py
+python evaluate_and_plot.py
+python robustness_test.py
+python tools/build_analysis_bundle.py
+```
 
 ## Experiment Artifacts (AI/Codex-Friendly)
 

@@ -31,6 +31,9 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--seed", type=int, default=SEED_BASE)
     parser.add_argument("--run-name", type=str, default="robustness")
     parser.add_argument("--output-dir", type=str, default="runs")
+    parser.add_argument("--mode", choices=["baseline", "research"], default="baseline")
+    parser.add_argument("--traffic-model", type=str, default="poisson")
+    parser.add_argument("--reward-profile", type=str, default="default")
     return parser.parse_args()
 
 
@@ -91,6 +94,12 @@ def save_figure(fig: plt.Figure, name: str, run_dir: Path) -> None:
 
 def main() -> None:
     args = parse_args()
+    if args.mode == "baseline":
+        if args.traffic_model != "poisson" or args.reward_profile != "default":
+            raise ValueError(
+                "Baseline mode must keep --traffic-model=poisson and --reward-profile=default "
+                "to preserve reproducibility."
+            )
     run_dir = create_run_dir(args.run_name, args.output_dir)
 
     baseline_model_path = Path("./models/baseline_ppo/final_model.zip")
@@ -210,6 +219,14 @@ def main() -> None:
                 "seed": args.seed,
                 "lambdas": LAMBDA_LIST,
                 "sla_threshold": SLA_THRESHOLD,
+                "mode": args.mode,
+                "traffic_model": args.traffic_model,
+                "reward_profile": args.reward_profile,
+                "baseline_policy": (
+                    "Default baseline must remain unchanged and reproducible: "
+                    "Poisson arrival + default reward. "
+                    "Research mode may add explicit, comparable, reversible variants only."
+                ),
             },
             indent=2,
         ),

@@ -84,6 +84,9 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--run-name", type=str, default=DEFAULT_RUN_NAME)
     parser.add_argument("--output-dir", type=str, default=DEFAULT_OUTPUT_DIR)
     parser.add_argument("--early-stop", action="store_true")
+    parser.add_argument("--mode", choices=["baseline", "research"], default="baseline")
+    parser.add_argument("--traffic-model", type=str, default="poisson")
+    parser.add_argument("--reward-profile", type=str, default="default")
     return parser.parse_args()
 
 
@@ -228,6 +231,12 @@ def plateau_diagnosis(npz_path: Path) -> Dict[str, float | bool | str]:
 
 def main() -> None:
     args = parse_args()
+    if args.mode == "baseline":
+        if args.traffic_model != "poisson" or args.reward_profile != "default":
+            raise ValueError(
+                "Baseline mode must keep --traffic-model=poisson and --reward-profile=default "
+                "to preserve reproducibility."
+            )
     np.random.seed(args.seed)
 
     run_dir = create_run_dir(args.run_name, args.output_dir)
@@ -257,7 +266,15 @@ def main() -> None:
             "minislots_per_slot": 14,
             "arrival_rate": args.arrival_rate,
             "deadline_D": 3,
+            "traffic_model": args.traffic_model,
         },
+        "reward_profile": args.reward_profile,
+        "mode": args.mode,
+        "baseline_policy": (
+            "Default baseline must remain unchanged and reproducible: "
+            "Poisson arrival + default reward. "
+            "Research mode may add explicit, comparable, reversible variants only."
+        ),
         "training": {
             "seed": args.seed,
             "total_timesteps": args.total_timesteps,
