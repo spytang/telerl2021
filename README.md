@@ -216,6 +216,9 @@ python verify_envs.py
 python train.py
 ```
 
+> Note: `evaluate_and_plot.py` expects `./logs/*/evaluations.npz` to draw training curves.
+> With default `eval_freq=5000`, use `--total-timesteps >= 5000` if you want training-curve files in smoke tests.
+
 ### 5) Evaluate and generate figures
 
 ```bash

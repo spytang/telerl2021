@@ -138,6 +138,12 @@ def evaluate_fixed_rr(n_episodes: int, seed_base: int) -> Dict[str, np.ndarray]:
 
 
 def load_eval_curve(npz_path: Path) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+    if not npz_path.exists():
+        raise FileNotFoundError(
+            f"Missing eval curve file: {npz_path}. "
+            "This commonly happens if training timesteps are lower than eval_freq "
+            "(default eval_freq=5000 in train.py)."
+        )
     data = np.load(npz_path)
     timesteps = data["timesteps"]
     results = data["results"]
@@ -170,26 +176,36 @@ def main() -> None:
     var_metrics = evaluate_ppo(Path("./models/var_ppo/final_model.zip"), n_episodes=args.episodes, seed_base=args.seed)
     rr_metrics = evaluate_fixed_rr(n_episodes=args.episodes, seed_base=args.seed)
 
-    baseline_ts, baseline_mean, baseline_std = load_eval_curve(Path("./logs/baseline_ppo/evaluations.npz"))
-    var_ts, var_mean, var_std = load_eval_curve(Path("./logs/var_ppo/evaluations.npz"))
-    baseline_mean_smooth = pd.Series(baseline_mean).rolling(window=5, min_periods=1, center=True).mean().values
-    var_mean_smooth = pd.Series(var_mean).rolling(window=5, min_periods=1, center=True).mean().values
+    curve_warning: str | None = None
+    try:
+        baseline_ts, baseline_mean, baseline_std = load_eval_curve(Path("./logs/baseline_ppo/evaluations.npz"))
+        var_ts, var_mean, var_std = load_eval_curve(Path("./logs/var_ppo/evaluations.npz"))
+        baseline_mean_smooth = pd.Series(baseline_mean).rolling(window=5, min_periods=1, center=True).mean().values
+        var_mean_smooth = pd.Series(var_mean).rolling(window=5, min_periods=1, center=True).mean().values
+    except FileNotFoundError as exc:
+        curve_warning = str(exc)
+        baseline_ts = baseline_mean = baseline_std = np.array([], dtype=np.float64)
+        var_ts = var_mean = var_std = np.array([], dtype=np.float64)
+        baseline_mean_smooth = var_mean_smooth = np.array([], dtype=np.float64)
 
     fontsize = 12
     linewidth = 2
 
-    fig1 = plt.figure(figsize=(8, 5))
-    plt.plot(baseline_ts, baseline_mean_smooth, color="blue", linewidth=linewidth, label="PPO (Baseline Reward)")
-    plt.fill_between(baseline_ts, baseline_mean - baseline_std, baseline_mean + baseline_std, color="blue", alpha=0.2)
-    plt.plot(var_ts, var_mean_smooth, color="orange", linewidth=linewidth, label="PPO (Variance-Penalized)")
-    plt.fill_between(var_ts, var_mean - var_std, var_mean + var_std, color="orange", alpha=0.2)
-    plt.xlabel("Training Timesteps", fontsize=fontsize)
-    plt.ylabel("Mean Episode Reward", fontsize=fontsize)
-    plt.title("Training Convergence Comparison", fontsize=fontsize)
-    plt.legend(fontsize=fontsize)
-    plt.tight_layout()
-    save_figure(fig1, "training_curves", run_dir)
-    plt.close(fig1)
+    if baseline_ts.size > 0 and var_ts.size > 0:
+        fig1 = plt.figure(figsize=(8, 5))
+        plt.plot(baseline_ts, baseline_mean_smooth, color="blue", linewidth=linewidth, label="PPO (Baseline Reward)")
+        plt.fill_between(baseline_ts, baseline_mean - baseline_std, baseline_mean + baseline_std, color="blue", alpha=0.2)
+        plt.plot(var_ts, var_mean_smooth, color="orange", linewidth=linewidth, label="PPO (Variance-Penalized)")
+        plt.fill_between(var_ts, var_mean - var_std, var_mean + var_std, color="orange", alpha=0.2)
+        plt.xlabel("Training Timesteps", fontsize=fontsize)
+        plt.ylabel("Mean Episode Reward", fontsize=fontsize)
+        plt.title("Training Convergence Comparison", fontsize=fontsize)
+        plt.legend(fontsize=fontsize)
+        plt.tight_layout()
+        save_figure(fig1, "training_curves", run_dir)
+        plt.close(fig1)
+    elif curve_warning:
+        print(f"[WARN] {curve_warning}")
 
     agents = ["fixed_rr", "baseline_ppo", "var_ppo"]
     agent_metrics = {"fixed_rr": rr_metrics, "baseline_ppo": baseline_metrics, "var_ppo": var_metrics}
@@ -307,6 +323,8 @@ def main() -> None:
         f"- Lowest throughput variance: **{best_var_agent}** ({summary[best_var_agent]['embb_throughput_variance_mean']:.2e}).\n\n"
         "Interpretation is descriptive only; no new algorithmic claims are introduced.\n"
     )
+    if curve_warning:
+        report += f"\nTraining-curve note: {curve_warning}\n"
     (run_dir / "ai_report.md").write_text(report, encoding="utf-8")
 
     reward_best = max(stats["reward_mean"] for stats in summary.values())
