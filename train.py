@@ -17,7 +17,7 @@ from stable_baselines3.common.monitor import Monitor
 from ran_env import RANSlicingEnv
 from ran_env_var import RANSlicingEnvVar
 
-DEFAULT_TOTAL_TIMESTEPS = 200_000
+DEFAULT_TOTAL_TIMESTEPS = 100_000
 DEFAULT_SEED = 42
 DEFAULT_ARRIVAL_RATE = 0.5
 DEFAULT_ALPHA = 0.3

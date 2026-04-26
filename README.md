@@ -123,7 +123,7 @@ Motivation: variance regularization encourages smoother puncturing patterns and 
 - `batch_size=140`
 - `n_epochs=10`
 - `learning_rate=3e-4`
-- `total_timesteps=200000`
+- `total_timesteps=100000`
 - eval callback every 5000 steps (`20` eval episodes)
 - seed: `42`
 
