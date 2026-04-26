@@ -33,7 +33,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--output-dir", type=str, default="runs")
     parser.add_argument("--mode", choices=["baseline", "research"], default="baseline")
     parser.add_argument("--traffic-model", type=str, default="poisson")
-    parser.add_argument("--reward-profile", type=str, default="default")
+    parser.add_argument("--reward-profile", choices=["default", "urllc_heavy"], default="default")
     return parser.parse_args()
 
 
@@ -118,9 +118,9 @@ def main() -> None:
     rows: List[Dict[str, float | int | str]] = []
 
     for lam in LAMBDA_LIST:
-        rr_env = RANSlicingEnv(arrival_rate=lam)
-        baseline_env = RANSlicingEnv(arrival_rate=lam)
-        var_env = RANSlicingEnvVar(arrival_rate=lam, alpha=0.3)
+        rr_env = RANSlicingEnv(arrival_rate=lam, reward_profile=args.reward_profile)
+        baseline_env = RANSlicingEnv(arrival_rate=lam, reward_profile=args.reward_profile)
+        var_env = RANSlicingEnvVar(arrival_rate=lam, alpha=0.3, reward_profile=args.reward_profile)
 
         rr_metrics = evaluate_agent(lambda _obs, t: t % rr_env.F, rr_env, args.episodes, args.seed)
         baseline_metrics = evaluate_agent(

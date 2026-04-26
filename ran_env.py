@@ -22,6 +22,7 @@ class RANSlicingEnv(gym.Env):
         minislots_per_slot: int = 14,
         arrival_rate: float = 0.5,
         deadline_D: int = 3,
+        reward_profile: str = "default",
         seed: Optional[int] = None,
     ) -> None:
         super().__init__()
@@ -32,6 +33,7 @@ class RANSlicingEnv(gym.Env):
         self.T = self.Sigma * self.minislots_per_slot
         self.arrival_rate = arrival_rate
         self.deadline_D = deadline_D
+        self.reward_profile = reward_profile
 
         # Actions: 0..F-1 puncture selected subcarrier, F means defer.
         self.action_space = spaces.Discrete(self.F + 1)
@@ -51,6 +53,32 @@ class RANSlicingEnv(gym.Env):
         self._puncture_counts = np.zeros(self.F, dtype=np.int32)
         self._cw_tolerances = np.ones(self.F, dtype=np.int32)
         self._cw_outage_flags = np.zeros(self.F, dtype=bool)
+        self._last_action_deferred = False
+
+    def _compute_reward(
+        self,
+        urllc_latency_violations: int,
+        embb_outages_this_step: int,
+        queue_length: int,
+        action_deferred: bool,
+    ) -> float:
+        if self.reward_profile == "default":
+            return -1.0 * urllc_latency_violations - 0.5 * embb_outages_this_step
+
+        if self.reward_profile == "urllc_heavy":
+            # Research profile: prioritize URLLC deadline protection while
+            # preserving a soft eMBB reliability signal and queue-pressure cost.
+            return (
+                -2.0 * urllc_latency_violations
+                - 0.25 * embb_outages_this_step
+                - 0.05 * queue_length
+                - (0.02 if action_deferred and queue_length > 0 else 0.0)
+            )
+
+        raise ValueError(
+            f"Unknown reward_profile='{self.reward_profile}'. "
+            "Use one of: default, urllc_heavy."
+        )
 
     def _init_slot_codewords(self) -> None:
         self._puncture_counts.fill(0)
@@ -82,6 +110,7 @@ class RANSlicingEnv(gym.Env):
         self._t = 0
         self._slot_idx = 0
         self._init_slot_codewords()
+        self._last_action_deferred = False
 
         return self._get_obs(), {}
 
@@ -113,6 +142,9 @@ class RANSlicingEnv(gym.Env):
             ):
                 self._cw_outage_flags[action] = True
                 embb_outages_this_step += 1
+            self._last_action_deferred = False
+        else:
+            self._last_action_deferred = bool(self._queue and action == self.F)
 
         # Deadline progression and violation accounting.
         updated_queue: Deque[int] = deque()
@@ -125,7 +157,12 @@ class RANSlicingEnv(gym.Env):
                 updated_queue.append(rem)
         self._queue = updated_queue
 
-        reward = -1.0 * urllc_latency_violations - 0.5 * embb_outages_this_step
+        reward = self._compute_reward(
+            urllc_latency_violations=urllc_latency_violations,
+            embb_outages_this_step=embb_outages_this_step,
+            queue_length=len(self._queue),
+            action_deferred=self._last_action_deferred,
+        )
 
         self._t += 1
         terminated = self._t >= self.T
@@ -138,6 +175,8 @@ class RANSlicingEnv(gym.Env):
             "urllc_latency_violations": urllc_latency_violations,
             "embb_outages_this_step": embb_outages_this_step,
             "slot_idx": self._slot_idx,
+            "reward_profile": self.reward_profile,
+            "action_deferred": self._last_action_deferred,
         }
 
         return self._get_obs(), float(reward), terminated, truncated, info

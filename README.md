@@ -81,11 +81,20 @@ The simulation follows the Saggese et al. problem setting with explicit fixed pa
   - `0..11`: puncture selected subcarrier for oldest URLLC packet
   - `12`: defer transmission (allowed only when queue dynamics permit)
 
-- **Baseline reward**:
+- **Baseline reward (`reward_profile=default`)**:
 
 ```text
 r_t = -1 * (URLLC latency violations at t)
       -0.5 * (eMBB outages at t)
+```
+
+- **Research reward (`reward_profile=urllc_heavy`)**:
+
+```text
+r_t = -2.0 * (URLLC latency violations at t)
+      -0.25 * (eMBB outages at t)
+      -0.05 * (queue length at t)
+      -0.02 * (defer action when queue is non-empty)
 ```
 
 - **Episode termination**: at minislot `t = 140`.

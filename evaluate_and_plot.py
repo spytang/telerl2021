@@ -28,7 +28,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--output-dir", type=str, default="runs")
     parser.add_argument("--mode", choices=["baseline", "research"], default="baseline")
     parser.add_argument("--traffic-model", type=str, default="poisson")
-    parser.add_argument("--reward-profile", type=str, default="default")
+    parser.add_argument("--reward-profile", choices=["default", "urllc_heavy"], default="default")
     return parser.parse_args()
 
 
@@ -56,10 +56,15 @@ def ensure_model(model_path: Path) -> None:
         )
 
 
-def evaluate_ppo(model_path: Path, n_episodes: int, seed_base: int) -> Dict[str, np.ndarray]:
+def evaluate_ppo(
+    model_path: Path,
+    n_episodes: int,
+    seed_base: int,
+    reward_profile: str,
+) -> Dict[str, np.ndarray]:
     ensure_model(model_path)
     model = PPO.load(str(model_path))
-    env = RANSlicingEnv()
+    env = RANSlicingEnv(reward_profile=reward_profile)
 
     rewards: List[float] = []
     violations: List[int] = []
@@ -99,8 +104,8 @@ def evaluate_ppo(model_path: Path, n_episodes: int, seed_base: int) -> Dict[str,
     }
 
 
-def evaluate_fixed_rr(n_episodes: int, seed_base: int) -> Dict[str, np.ndarray]:
-    env = RANSlicingEnv()
+def evaluate_fixed_rr(n_episodes: int, seed_base: int, reward_profile: str) -> Dict[str, np.ndarray]:
+    env = RANSlicingEnv(reward_profile=reward_profile)
     rewards: List[float] = []
     violations: List[int] = []
     outages: List[int] = []
@@ -181,9 +186,19 @@ def main() -> None:
     run_dir = create_run_dir(args.run_name, args.output_dir)
     apply_style()
 
-    baseline_metrics = evaluate_ppo(Path("./models/baseline_ppo/final_model.zip"), n_episodes=args.episodes, seed_base=args.seed)
-    var_metrics = evaluate_ppo(Path("./models/var_ppo/final_model.zip"), n_episodes=args.episodes, seed_base=args.seed)
-    rr_metrics = evaluate_fixed_rr(n_episodes=args.episodes, seed_base=args.seed)
+    baseline_metrics = evaluate_ppo(
+        Path("./models/baseline_ppo/final_model.zip"),
+        n_episodes=args.episodes,
+        seed_base=args.seed,
+        reward_profile=args.reward_profile,
+    )
+    var_metrics = evaluate_ppo(
+        Path("./models/var_ppo/final_model.zip"),
+        n_episodes=args.episodes,
+        seed_base=args.seed,
+        reward_profile=args.reward_profile,
+    )
+    rr_metrics = evaluate_fixed_rr(n_episodes=args.episodes, seed_base=args.seed, reward_profile=args.reward_profile)
 
     curve_warning: str | None = None
     try:

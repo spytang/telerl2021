@@ -86,7 +86,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--early-stop", action="store_true")
     parser.add_argument("--mode", choices=["baseline", "research"], default="baseline")
     parser.add_argument("--traffic-model", type=str, default="poisson")
-    parser.add_argument("--reward-profile", type=str, default="default")
+    parser.add_argument("--reward-profile", choices=["default", "urllc_heavy"], default="default")
     return parser.parse_args()
 
 
@@ -97,8 +97,13 @@ def create_run_dir(run_name: str, output_dir: str) -> Path:
     return run_dir
 
 
-def evaluate_policy_on_baseline_env(model: PPO, n_episodes: int = 100, seed: int = DEFAULT_SEED) -> Dict[str, np.ndarray]:
-    env = RANSlicingEnv(arrival_rate=DEFAULT_ARRIVAL_RATE)
+def evaluate_policy_on_baseline_env(
+    model: PPO,
+    n_episodes: int = 100,
+    seed: int = DEFAULT_SEED,
+    reward_profile: str = "default",
+) -> Dict[str, np.ndarray]:
+    env = RANSlicingEnv(arrival_rate=DEFAULT_ARRIVAL_RATE, reward_profile=reward_profile)
 
     rewards: List[float] = []
     violations: List[int] = []
@@ -131,8 +136,12 @@ def evaluate_policy_on_baseline_env(model: PPO, n_episodes: int = 100, seed: int
     }
 
 
-def evaluate_fixed_rr(n_episodes: int = 100, seed: int = DEFAULT_SEED) -> Dict[str, np.ndarray]:
-    env = RANSlicingEnv(arrival_rate=DEFAULT_ARRIVAL_RATE)
+def evaluate_fixed_rr(
+    n_episodes: int = 100,
+    seed: int = DEFAULT_SEED,
+    reward_profile: str = "default",
+) -> Dict[str, np.ndarray]:
+    env = RANSlicingEnv(arrival_rate=DEFAULT_ARRIVAL_RATE, reward_profile=reward_profile)
 
     rewards: List[float] = []
     violations: List[int] = []
@@ -294,11 +303,13 @@ def main() -> None:
     }
     (run_dir / "config.json").write_text(json.dumps(config, indent=2), encoding="utf-8")
 
-    env_baseline = RANSlicingEnv(arrival_rate=args.arrival_rate)
-    env_var = RANSlicingEnvVar(alpha=args.alpha, arrival_rate=args.arrival_rate)
+    env_baseline = RANSlicingEnv(arrival_rate=args.arrival_rate, reward_profile=args.reward_profile)
+    env_var = RANSlicingEnvVar(alpha=args.alpha, arrival_rate=args.arrival_rate, reward_profile=args.reward_profile)
 
-    eval_env_baseline = Monitor(RANSlicingEnv(arrival_rate=args.arrival_rate))
-    eval_env_var = Monitor(RANSlicingEnvVar(alpha=args.alpha, arrival_rate=args.arrival_rate))
+    eval_env_baseline = Monitor(RANSlicingEnv(arrival_rate=args.arrival_rate, reward_profile=args.reward_profile))
+    eval_env_var = Monitor(
+        RANSlicingEnvVar(alpha=args.alpha, arrival_rate=args.arrival_rate, reward_profile=args.reward_profile)
+    )
 
     callback_baseline_eval = EvalCallback(
         eval_env_baseline,
@@ -356,9 +367,19 @@ def main() -> None:
     model_baseline.save(str(baseline_model_dir / "final_model"))
     model_var.save(str(var_model_dir / "final_model"))
 
-    metrics_rr = evaluate_fixed_rr(n_episodes=100, seed=args.seed)
-    metrics_baseline = evaluate_policy_on_baseline_env(model_baseline, n_episodes=100, seed=args.seed)
-    metrics_var = evaluate_policy_on_baseline_env(model_var, n_episodes=100, seed=args.seed)
+    metrics_rr = evaluate_fixed_rr(n_episodes=100, seed=args.seed, reward_profile=args.reward_profile)
+    metrics_baseline = evaluate_policy_on_baseline_env(
+        model_baseline,
+        n_episodes=100,
+        seed=args.seed,
+        reward_profile=args.reward_profile,
+    )
+    metrics_var = evaluate_policy_on_baseline_env(
+        model_var,
+        n_episodes=100,
+        seed=args.seed,
+        reward_profile=args.reward_profile,
+    )
 
     rr_summary = summarize(metrics_rr)
     baseline_summary = summarize(metrics_baseline)
