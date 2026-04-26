@@ -23,6 +23,7 @@ class RANSlicingEnv(gym.Env):
         arrival_rate: float = 0.5,
         deadline_D: int = 3,
         reward_profile: str = "default",
+        include_channel_state: Optional[bool] = None,
         seed: Optional[int] = None,
     ) -> None:
         super().__init__()
@@ -34,15 +35,22 @@ class RANSlicingEnv(gym.Env):
         self.arrival_rate = arrival_rate
         self.deadline_D = deadline_D
         self.reward_profile = reward_profile
+        if include_channel_state is None:
+            # In research profiles we expose channel/codeword stress proxy
+            # to avoid unnecessary partial observability.
+            self.include_channel_state = reward_profile in {"risk_aware"}
+        else:
+            self.include_channel_state = include_channel_state
 
         # Actions: 0..F-1 puncture selected subcarrier, F means defer.
         self.action_space = spaces.Discrete(self.F + 1)
 
-        # State: [queue_len, min_deadline, puncture_counts(F)] all normalized to [0,1].
+        # State: [queue_len, min_deadline, puncture_counts(F), optional budget_remaining(F)].
+        obs_dim = 2 + self.F + (self.F if self.include_channel_state else 0)
         self.observation_space = spaces.Box(
             low=0.0,
             high=1.0,
-            shape=(2 + self.F,),
+            shape=(obs_dim,),
             dtype=np.float32,
         )
 
@@ -61,6 +69,8 @@ class RANSlicingEnv(gym.Env):
         embb_outages_this_step: int,
         queue_length: int,
         action_deferred: bool,
+        queue_urgency: float,
+        embb_risk_proxy: float,
     ) -> float:
         if self.reward_profile == "default":
             return -1.0 * urllc_latency_violations - 0.5 * embb_outages_this_step
@@ -75,9 +85,23 @@ class RANSlicingEnv(gym.Env):
                 - (0.02 if action_deferred and queue_length > 0 else 0.0)
             )
 
+        if self.reward_profile == "risk_aware":
+            # Research profile:
+            # 1) URLLC violations receive dynamic weight when queue is urgent.
+            # 2) eMBB is protected by outage + pre-outage risk proxy.
+            # 3) defer is discouraged only when backlog exists.
+            dynamic_urllc_weight = 1.8 + 1.7 * queue_urgency
+            return (
+                -dynamic_urllc_weight * urllc_latency_violations
+                - 0.20 * embb_outages_this_step
+                - 0.25 * embb_risk_proxy
+                - 0.05 * queue_length
+                - (0.05 + 0.10 * queue_urgency if action_deferred and queue_length > 0 else 0.0)
+            )
+
         raise ValueError(
             f"Unknown reward_profile='{self.reward_profile}'. "
-            "Use one of: default, urllc_heavy."
+            "Use one of: default, urllc_heavy, risk_aware."
         )
 
     def _init_slot_codewords(self) -> None:
@@ -93,8 +117,28 @@ class RANSlicingEnv(gym.Env):
             min_deadline_norm = 0.0
 
         puncture_norm = np.clip(self._puncture_counts / self.minislots_per_slot, 0.0, 1.0)
-        obs = np.concatenate(([queue_len_norm, min_deadline_norm], puncture_norm)).astype(np.float32)
+        obs_parts = [np.array([queue_len_norm, min_deadline_norm], dtype=np.float32), puncture_norm.astype(np.float32)]
+        if self.include_channel_state:
+            # Remaining puncture budget proxy per codeword. In practical systems,
+            # this can be estimated from CQI/MCS/HARQ-level knowledge.
+            budget_remaining = np.clip(
+                (self._cw_tolerances - self._puncture_counts) / np.maximum(self._cw_tolerances, 1),
+                0.0,
+                1.0,
+            ).astype(np.float32)
+            obs_parts.append(budget_remaining)
+
+        obs = np.concatenate(obs_parts).astype(np.float32)
         return obs
+
+    def _queue_urgency(self) -> float:
+        if not self._queue:
+            return 0.0
+
+        min_deadline = min(self._queue)
+        deadline_pressure = 1.0 - (max(min_deadline, 0) / self.deadline_D)
+        backlog_pressure = min(len(self._queue), self.T) / self.T
+        return float(np.clip(0.75 * deadline_pressure + 0.25 * backlog_pressure, 0.0, 1.0))
 
     def reset(
         self,
@@ -131,11 +175,15 @@ class RANSlicingEnv(gym.Env):
             self._queue.append(self.deadline_D)
 
         embb_outages_this_step = 0
+        embb_risk_proxy = 0.0
 
         # Serve at most one packet, prioritizing oldest (FIFO queue).
         if self._queue and action < self.F:
             self._queue.popleft()
             self._puncture_counts[action] += 1
+            embb_risk_proxy = float(
+                self._puncture_counts[action] / max(int(self._cw_tolerances[action]), 1)
+            )
             if (
                 not self._cw_outage_flags[action]
                 and self._puncture_counts[action] > self._cw_tolerances[action]
@@ -156,12 +204,16 @@ class RANSlicingEnv(gym.Env):
             else:
                 updated_queue.append(rem)
         self._queue = updated_queue
+        queue_urgency = self._queue_urgency()
+        puncture_concentration = float(np.var(self._puncture_counts / max(self.minislots_per_slot, 1)))
 
         reward = self._compute_reward(
             urllc_latency_violations=urllc_latency_violations,
             embb_outages_this_step=embb_outages_this_step,
             queue_length=len(self._queue),
             action_deferred=self._last_action_deferred,
+            queue_urgency=queue_urgency,
+            embb_risk_proxy=embb_risk_proxy,
         )
 
         self._t += 1
@@ -177,6 +229,10 @@ class RANSlicingEnv(gym.Env):
             "slot_idx": self._slot_idx,
             "reward_profile": self.reward_profile,
             "action_deferred": self._last_action_deferred,
+            "queue_urgency": queue_urgency,
+            "embb_risk_proxy": embb_risk_proxy,
+            "puncture_concentration": puncture_concentration,
+            "include_channel_state": self.include_channel_state,
         }
 
         return self._get_obs(), float(reward), terminated, truncated, info

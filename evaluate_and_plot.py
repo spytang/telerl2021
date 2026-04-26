@@ -28,7 +28,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--output-dir", type=str, default="runs")
     parser.add_argument("--mode", choices=["baseline", "research"], default="baseline")
     parser.add_argument("--traffic-model", type=str, default="poisson")
-    parser.add_argument("--reward-profile", choices=["default", "urllc_heavy"], default="default")
+    parser.add_argument("--reward-profile", choices=["default", "urllc_heavy", "risk_aware"], default="default")
     return parser.parse_args()
 
 
@@ -64,7 +64,10 @@ def evaluate_ppo(
 ) -> Dict[str, np.ndarray]:
     ensure_model(model_path)
     model = PPO.load(str(model_path))
-    env = RANSlicingEnv(reward_profile=reward_profile)
+    env = RANSlicingEnv(
+        reward_profile=reward_profile,
+        include_channel_state=reward_profile == "risk_aware",
+    )
 
     rewards: List[float] = []
     violations: List[int] = []
@@ -105,7 +108,10 @@ def evaluate_ppo(
 
 
 def evaluate_fixed_rr(n_episodes: int, seed_base: int, reward_profile: str) -> Dict[str, np.ndarray]:
-    env = RANSlicingEnv(reward_profile=reward_profile)
+    env = RANSlicingEnv(
+        reward_profile=reward_profile,
+        include_channel_state=reward_profile == "risk_aware",
+    )
     rewards: List[float] = []
     violations: List[int] = []
     outages: List[int] = []

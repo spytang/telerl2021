@@ -86,7 +86,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--early-stop", action="store_true")
     parser.add_argument("--mode", choices=["baseline", "research"], default="baseline")
     parser.add_argument("--traffic-model", type=str, default="poisson")
-    parser.add_argument("--reward-profile", choices=["default", "urllc_heavy"], default="default")
+    parser.add_argument("--reward-profile", choices=["default", "urllc_heavy", "risk_aware"], default="default")
     return parser.parse_args()
 
 
@@ -103,7 +103,11 @@ def evaluate_policy_on_baseline_env(
     seed: int = DEFAULT_SEED,
     reward_profile: str = "default",
 ) -> Dict[str, np.ndarray]:
-    env = RANSlicingEnv(arrival_rate=DEFAULT_ARRIVAL_RATE, reward_profile=reward_profile)
+    env = RANSlicingEnv(
+        arrival_rate=DEFAULT_ARRIVAL_RATE,
+        reward_profile=reward_profile,
+        include_channel_state=reward_profile == "risk_aware",
+    )
 
     rewards: List[float] = []
     violations: List[int] = []
@@ -141,7 +145,11 @@ def evaluate_fixed_rr(
     seed: int = DEFAULT_SEED,
     reward_profile: str = "default",
 ) -> Dict[str, np.ndarray]:
-    env = RANSlicingEnv(arrival_rate=DEFAULT_ARRIVAL_RATE, reward_profile=reward_profile)
+    env = RANSlicingEnv(
+        arrival_rate=DEFAULT_ARRIVAL_RATE,
+        reward_profile=reward_profile,
+        include_channel_state=reward_profile == "risk_aware",
+    )
 
     rewards: List[float] = []
     violations: List[int] = []
@@ -303,12 +311,33 @@ def main() -> None:
     }
     (run_dir / "config.json").write_text(json.dumps(config, indent=2), encoding="utf-8")
 
-    env_baseline = RANSlicingEnv(arrival_rate=args.arrival_rate, reward_profile=args.reward_profile)
-    env_var = RANSlicingEnvVar(alpha=args.alpha, arrival_rate=args.arrival_rate, reward_profile=args.reward_profile)
+    include_channel_state = args.reward_profile == "risk_aware"
+    env_baseline = RANSlicingEnv(
+        arrival_rate=args.arrival_rate,
+        reward_profile=args.reward_profile,
+        include_channel_state=include_channel_state,
+    )
+    env_var = RANSlicingEnvVar(
+        alpha=args.alpha,
+        arrival_rate=args.arrival_rate,
+        reward_profile=args.reward_profile,
+        include_channel_state=include_channel_state,
+    )
 
-    eval_env_baseline = Monitor(RANSlicingEnv(arrival_rate=args.arrival_rate, reward_profile=args.reward_profile))
+    eval_env_baseline = Monitor(
+        RANSlicingEnv(
+            arrival_rate=args.arrival_rate,
+            reward_profile=args.reward_profile,
+            include_channel_state=include_channel_state,
+        )
+    )
     eval_env_var = Monitor(
-        RANSlicingEnvVar(alpha=args.alpha, arrival_rate=args.arrival_rate, reward_profile=args.reward_profile)
+        RANSlicingEnvVar(
+            alpha=args.alpha,
+            arrival_rate=args.arrival_rate,
+            reward_profile=args.reward_profile,
+            include_channel_state=include_channel_state,
+        )
     )
 
     callback_baseline_eval = EvalCallback(
