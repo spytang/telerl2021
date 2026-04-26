@@ -222,13 +222,42 @@ python train.py
 python evaluate_and_plot.py
 ```
 
-### 6) Run robustness analysis
+### 6) Robustness testing
 
 ```bash
 python robustness_test.py
 ```
 
 ---
+
+## Experiment Artifacts (AI/Codex-Friendly)
+
+Each major script now creates a timestamped run directory:
+
+```text
+runs/<timestamp>_<run_name>/
+```
+
+Typical artifacts include:
+
+- `config.json` (full run configuration)
+- `summary.json` (aggregated metrics)
+- `ai_report.md` (concise data-driven interpretation)
+- CSV exports:
+  - `training/*.csv`
+  - `evaluation/evaluation_metrics.csv`
+  - `robustness/robustness_metrics.csv`
+- copied figures under `runs/.../figures/` while preserving compatibility with `./figures/`
+
+For future AI/Codex analysis, prefer using:
+
+- `config.json`
+- `summary.json`
+- `evaluation_metrics.csv`
+- `robustness_metrics.csv`
+- `ai_report.md`
+
+rather than relying only on static figures.
 
 ## File Structure
 

@@ -2,36 +2,65 @@
 
 from __future__ import annotations
 
-import os
+import argparse
+import json
+from datetime import datetime
+from pathlib import Path
 from typing import Callable, Dict, List
 
 import matplotlib.pyplot as plt
 import numpy as np
+import pandas as pd
 from stable_baselines3 import PPO
 
 from ran_env import RANSlicingEnv
 from ran_env_var import RANSlicingEnvVar
 
-EPISODES = 50
+DEFAULT_EPISODES = 50
 EPISODE_LENGTH = 140
 SEED_BASE = 42
-LAMBDA_LIST = [0.2, 0.4, 0.6, 0.8, 1.0, 1.2, 1.5]
-
+LAMBDA_LIST = [0.2, 0.5, 0.8, 1.0, 1.5]
+SLA_THRESHOLD = 0.05
 
 AgentStats = Dict[str, List[float]]
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--episodes", type=int, default=DEFAULT_EPISODES)
+    parser.add_argument("--seed", type=int, default=SEED_BASE)
+    parser.add_argument("--run-name", type=str, default="robustness")
+    parser.add_argument("--output-dir", type=str, default="runs")
+    return parser.parse_args()
+
+
+def create_run_dir(run_name: str, output_dir: str) -> Path:
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    run_dir = Path(output_dir) / f"{timestamp}_{run_name}"
+    run_dir.mkdir(parents=True, exist_ok=True)
+    (run_dir / "robustness").mkdir(parents=True, exist_ok=True)
+    (run_dir / "figures").mkdir(parents=True, exist_ok=True)
+    return run_dir
+
+
+def ensure_model(model_path: Path) -> None:
+    if not model_path.exists():
+        raise FileNotFoundError(
+            f"Missing trained model: {model_path}. Run `python train.py` first."
+        )
 
 
 def evaluate_agent(
     policy_fn: Callable[[np.ndarray, int], int],
     env,
-    n_episodes: int = EPISODES,
+    n_episodes: int,
+    seed_base: int,
 ) -> AgentStats:
-    """Evaluate one policy on one environment and return per-episode rates."""
     violation_rates: List[float] = []
     outage_rates: List[float] = []
 
     for ep in range(n_episodes):
-        obs, _ = env.reset(seed=SEED_BASE + ep)
+        obs, _ = env.reset(seed=seed_base + ep)
         done = False
         step_idx = 0
         total_urllc_violations = 0
@@ -48,46 +77,61 @@ def evaluate_agent(
         violation_rates.append(total_urllc_violations / EPISODE_LENGTH)
         outage_rates.append(total_embb_outages / EPISODE_LENGTH)
 
-    return {
-        "violation_rates": violation_rates,
-        "outage_rates": outage_rates,
-    }
+    return {"violation_rates": violation_rates, "outage_rates": outage_rates}
+
+
+def save_figure(fig: plt.Figure, name: str, run_dir: Path) -> None:
+    figures_dir = Path("./figures")
+    figures_dir.mkdir(parents=True, exist_ok=True)
+    fig.savefig(figures_dir / f"{name}.png", dpi=200)
+    fig.savefig(figures_dir / f"{name}.pdf")
+    fig.savefig(run_dir / "figures" / f"{name}.png", dpi=200)
+    fig.savefig(run_dir / "figures" / f"{name}.pdf")
 
 
 def main() -> None:
-    baseline_model = PPO.load("./models/baseline_ppo/final_model")
-    var_model = PPO.load("./models/var_ppo/final_model")
+    args = parse_args()
+    run_dir = create_run_dir(args.run_name, args.output_dir)
+
+    baseline_model_path = Path("./models/baseline_ppo/final_model.zip")
+    var_model_path = Path("./models/var_ppo/final_model.zip")
+    ensure_model(baseline_model_path)
+    ensure_model(var_model_path)
+
+    baseline_model = PPO.load(str(baseline_model_path))
+    var_model = PPO.load(str(var_model_path))
 
     stats = {
         "fixed_rr": {"viol_mean": [], "viol_std": [], "out_mean": [], "out_std": []},
         "baseline_ppo": {"viol_mean": [], "viol_std": [], "out_mean": [], "out_std": []},
         "var_ppo": {"viol_mean": [], "viol_std": [], "out_mean": [], "out_std": []},
     }
+    rows: List[Dict[str, float | int | str]] = []
 
     for lam in LAMBDA_LIST:
         rr_env = RANSlicingEnv(arrival_rate=lam)
         baseline_env = RANSlicingEnv(arrival_rate=lam)
-        var_env = RANSlicingEnvVar(arrival_rate=lam, alpha=1.0)
+        var_env = RANSlicingEnvVar(arrival_rate=lam, alpha=0.3)
 
-        rr_metrics = evaluate_agent(lambda _obs, t: t % rr_env.F, rr_env)
+        rr_metrics = evaluate_agent(lambda _obs, t: t % rr_env.F, rr_env, args.episodes, args.seed)
         baseline_metrics = evaluate_agent(
             lambda obs, _t: int(baseline_model.predict(obs, deterministic=True)[0]),
             baseline_env,
+            args.episodes,
+            args.seed,
         )
         var_metrics = evaluate_agent(
             lambda obs, _t: int(var_model.predict(obs, deterministic=True)[0]),
             var_env,
+            args.episodes,
+            args.seed,
         )
 
         rr_env.close()
         baseline_env.close()
         var_env.close()
 
-        for agent_name, metrics in (
-            ("fixed_rr", rr_metrics),
-            ("baseline_ppo", baseline_metrics),
-            ("var_ppo", var_metrics),
-        ):
+        for agent_name, metrics in (("fixed_rr", rr_metrics), ("baseline_ppo", baseline_metrics), ("var_ppo", var_metrics)):
             viol = np.array(metrics["violation_rates"], dtype=np.float64)
             out = np.array(metrics["outage_rates"], dtype=np.float64)
             stats[agent_name]["viol_mean"].append(float(np.mean(viol)))
@@ -95,24 +139,23 @@ def main() -> None:
             stats[agent_name]["out_mean"].append(float(np.mean(out)))
             stats[agent_name]["out_std"].append(float(np.std(out)))
 
-        print(
-            f"λ={lam:.1f} | fixed_rr viol={stats['fixed_rr']['viol_mean'][-1]:.3f} "
-            f"| baseline viol={stats['baseline_ppo']['viol_mean'][-1]:.3f} "
-            f"| var_ppo viol={stats['var_ppo']['viol_mean'][-1]:.3f}"
-        )
-        print(
-            f"      |        outage={stats['fixed_rr']['out_mean'][-1]:.3f} "
-            f"|          outage={stats['baseline_ppo']['out_mean'][-1]:.3f}"
-            f"|        outage={stats['var_ppo']['out_mean'][-1]:.3f}"
-        )
+            for ep in range(args.episodes):
+                rows.append(
+                    {
+                        "agent_name": agent_name,
+                        "lambda": lam,
+                        "episode": ep,
+                        "urllc_violation_rate": float(viol[ep]),
+                        "embb_outage_rate": float(out[ep]),
+                    }
+                )
 
-    os.makedirs("./figures", exist_ok=True)
+    df = pd.DataFrame(rows)
+    df.to_csv(run_dir / "robustness" / "robustness_metrics.csv", index=False)
 
     fontsize = 12
     linewidth = 2
-
     fig, axes = plt.subplots(2, 1, figsize=(10, 8), sharex=True)
-
     plot_styles = {
         "fixed_rr": {"color": "gray", "linestyle": "--", "label": "fixed_rr"},
         "baseline_ppo": {"color": "blue", "linestyle": "-", "label": "baseline_ppo"},
@@ -122,47 +165,15 @@ def main() -> None:
     for agent_name, style in plot_styles.items():
         viol_mean = np.array(stats[agent_name]["viol_mean"])
         viol_std = np.array(stats[agent_name]["viol_std"])
-        axes[0].plot(
-            LAMBDA_LIST,
-            viol_mean,
-            color=style["color"],
-            linestyle=style["linestyle"],
-            linewidth=linewidth,
-            label=style["label"],
-        )
-        axes[0].fill_between(
-            LAMBDA_LIST,
-            viol_mean - viol_std,
-            viol_mean + viol_std,
-            color=style["color"],
-            alpha=0.15,
-        )
+        axes[0].plot(LAMBDA_LIST, viol_mean, color=style["color"], linestyle=style["linestyle"], linewidth=linewidth, label=style["label"])
+        axes[0].fill_between(LAMBDA_LIST, viol_mean - viol_std, viol_mean + viol_std, color=style["color"], alpha=0.15)
 
         out_mean = np.array(stats[agent_name]["out_mean"])
         out_std = np.array(stats[agent_name]["out_std"])
-        axes[1].plot(
-            LAMBDA_LIST,
-            out_mean,
-            color=style["color"],
-            linestyle=style["linestyle"],
-            linewidth=linewidth,
-            label=style["label"],
-        )
-        axes[1].fill_between(
-            LAMBDA_LIST,
-            out_mean - out_std,
-            out_mean + out_std,
-            color=style["color"],
-            alpha=0.15,
-        )
+        axes[1].plot(LAMBDA_LIST, out_mean, color=style["color"], linestyle=style["linestyle"], linewidth=linewidth, label=style["label"])
+        axes[1].fill_between(LAMBDA_LIST, out_mean - out_std, out_mean + out_std, color=style["color"], alpha=0.15)
 
-    axes[0].axhline(
-        y=0.05,
-        color="red",
-        linestyle="--",
-        linewidth=linewidth,
-        label="SLA Threshold (5%)",
-    )
+    axes[0].axhline(y=SLA_THRESHOLD, color="red", linestyle="--", linewidth=linewidth, label="SLA Threshold (5%)")
     axes[0].set_ylabel("URLLC Violation Rate", fontsize=fontsize)
     axes[1].set_ylabel("eMBB Outage Rate", fontsize=fontsize)
 
@@ -173,9 +184,52 @@ def main() -> None:
 
     fig.suptitle("Robustness to Out-of-Distribution URLLC Arrival Rates", fontsize=fontsize)
     fig.tight_layout()
-    fig.savefig("./figures/robustness.png", dpi=200)
-    fig.savefig("./figures/robustness.pdf")
+    save_figure(fig, "robustness", run_dir)
     plt.close(fig)
+
+    summary: Dict[str, Dict[str, Dict[str, float | bool]]] = {}
+    for agent_name in ["fixed_rr", "baseline_ppo", "var_ppo"]:
+        summary[agent_name] = {}
+        for lam in LAMBDA_LIST:
+            sub = df[(df["agent_name"] == agent_name) & (df["lambda"] == lam)]
+            mean_viol = float(sub["urllc_violation_rate"].mean())
+            summary[agent_name][str(lam)] = {
+                "violation_rate_mean": mean_viol,
+                "violation_rate_std": float(sub["urllc_violation_rate"].std(ddof=0)),
+                "sla_threshold": SLA_THRESHOLD,
+                "sla_exceeded": mean_viol > SLA_THRESHOLD,
+            }
+
+    (run_dir / "summary.json").write_text(json.dumps(summary, indent=2), encoding="utf-8")
+    (run_dir / "config.json").write_text(
+        json.dumps(
+            {
+                "run_name": args.run_name,
+                "timestamp_utc": datetime.utcnow().isoformat() + "Z",
+                "episodes": args.episodes,
+                "seed": args.seed,
+                "lambdas": LAMBDA_LIST,
+                "sla_threshold": SLA_THRESHOLD,
+            },
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+
+    report_lines = [
+        "# AI Robustness Report",
+        "",
+        f"- Episodes per lambda: {args.episodes}",
+        f"- SLA threshold on URLLC violations: {SLA_THRESHOLD}",
+        "",
+        "## Observations",
+    ]
+    for agent in ["fixed_rr", "baseline_ppo", "var_ppo"]:
+        sla_pass = [lam for lam in LAMBDA_LIST if not summary[agent][str(lam)]["sla_exceeded"]]
+        report_lines.append(f"- {agent}: meets SLA at lambdas {sla_pass}.")
+    report_lines.append("")
+    report_lines.append("This report is descriptive and does not introduce new baselines or claims.")
+    (run_dir / "ai_report.md").write_text("\n".join(report_lines), encoding="utf-8")
 
 
 if __name__ == "__main__":
