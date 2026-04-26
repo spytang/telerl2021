@@ -1,0 +1,45 @@
+{
+  "generated_at_utc": "2026-04-26T17:39:55.514429+00:00",
+  "bundle_dir": "analysis_bundle",
+  "included": [
+    "README.md",
+    "ai_report.md",
+    "config.json",
+    "evaluate_and_plot.py",
+    "evaluation_metrics.csv",
+    "robustness_metrics.csv",
+    "robustness_test.py",
+    "summary.json",
+    "train.py"
+  ],
+  "missing": [],
+  "source_paths": {
+    "README.md": "README.md",
+    "train.py": "train.py",
+    "evaluate_and_plot.py": "evaluate_and_plot.py",
+    "robustness_test.py": "robustness_test.py",
+    "config.json": "runs/20260427_013722_robustness/config.json",
+    "config.json__run_dir": "20260427_013722_robustness",
+    "summary.json": "runs/20260427_013722_robustness/summary.json",
+    "summary.json__run_dir": "20260427_013722_robustness",
+    "evaluation_metrics.csv": "runs/20260427_013517_evaluate/evaluation/evaluation_metrics.csv",
+    "evaluation_metrics.csv__run_dir": "20260427_013517_evaluate",
+    "robustness_metrics.csv": "runs/20260427_013722_robustness/robustness/robustness_metrics.csv",
+    "robustness_metrics.csv__run_dir": "20260427_013722_robustness",
+    "ai_report.md": "runs/20260427_013722_robustness/ai_report.md",
+    "ai_report.md__run_dir": "20260427_013722_robustness"
+  },
+  "baseline_guardrail": "Default baseline must stay unchanged and reproducible: Poisson arrival + default reward. In research mode, new traffic_model/reward_profile variants are allowed only when explicitly labeled, comparable against baseline, reversible, and never presented as baseline.",
+  "reserved_interfaces": {
+    "mode": [
+      "baseline",
+      "research"
+    ],
+    "traffic_model": [
+      "poisson"
+    ],
+    "reward_profile": [
+      "default"
+    ]
+  }
+}

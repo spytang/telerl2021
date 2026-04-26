@@ -1,0 +1,32 @@
+{
+  "fixed_rr": {
+    "reward_mean": -1.515,
+    "reward_std": 1.3792298575654458,
+    "urllc_violation_rate_mean": 0.007142857142857143,
+    "urllc_violation_rate_std": 0.008390957231764808,
+    "embb_outage_rate_mean": 0.007357142857142857,
+    "embb_outage_rate_std": 0.007316113052986651,
+    "embb_throughput_variance_mean": 5.034367913832204e-05,
+    "embb_throughput_variance_std": 4.9730387747128635e-05
+  },
+  "baseline_ppo": {
+    "reward_mean": -5.625,
+    "reward_std": 1.2656520058847138,
+    "urllc_violation_rate_mean": 0.007142857142857143,
+    "urllc_violation_rate_std": 0.008390957231764808,
+    "embb_outage_rate_mean": 0.06607142857142854,
+    "embb_outage_rate_std": 0.005922544268491785,
+    "embb_throughput_variance_mean": 0.0004282702664399096,
+    "embb_throughput_variance_std": 3.5866103862899786e-05
+  },
+  "var_ppo": {
+    "reward_mean": -6.84,
+    "reward_std": 1.7144678474675457,
+    "urllc_violation_rate_mean": 0.007142857142857143,
+    "urllc_violation_rate_std": 0.008390957231764808,
+    "embb_outage_rate_mean": 0.08342857142857145,
+    "embb_outage_rate_std": 0.014978896719677842,
+    "embb_throughput_variance_mean": 0.0005294713718820866,
+    "embb_throughput_variance_std": 8.719554356313589e-05
+  }
+}

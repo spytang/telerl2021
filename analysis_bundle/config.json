@@ -1,0 +1,18 @@
+{
+  "run_name": "robustness",
+  "timestamp_utc": "2026-04-26T17:38:28.223711Z",
+  "episodes": 50,
+  "seed": 42,
+  "lambdas": [
+    0.2,
+    0.5,
+    0.8,
+    1.0,
+    1.5
+  ],
+  "sla_threshold": 0.05,
+  "mode": "baseline",
+  "traffic_model": "poisson",
+  "reward_profile": "default",
+  "baseline_policy": "Default baseline must remain unchanged and reproducible: Poisson arrival + default reward. Research mode may add explicit, comparable, reversible variants only."
+}

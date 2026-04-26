@@ -1,0 +1,36 @@
+{
+  "fixed_rr": {
+    "mean_reward": -1.515,
+    "std_reward": 1.3792298575654458,
+    "mean_violations": 1.0,
+    "mean_outages": 1.03
+  },
+  "baseline_ppo": {
+    "mean_reward": -5.625,
+    "std_reward": 1.2656520058847138,
+    "mean_violations": 1.0,
+    "mean_outages": 9.25,
+    "plateau": {
+      "available": true,
+      "plateau_detected": true,
+      "recent_mean": -6.1,
+      "previous_mean": -6.00625,
+      "delta": -0.09375,
+      "window": 4
+    }
+  },
+  "var_ppo": {
+    "mean_reward": -6.84,
+    "std_reward": 1.7144678474675457,
+    "mean_violations": 1.0,
+    "mean_outages": 11.68,
+    "plateau": {
+      "available": true,
+      "plateau_detected": true,
+      "recent_mean": -6.2755682125,
+      "previous_mean": -6.268665412499999,
+      "delta": -0.006902800000000653,
+      "window": 4
+    }
+  }
+}

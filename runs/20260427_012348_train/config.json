@@ -1,0 +1,42 @@
+{
+  "run": {
+    "run_name": "train",
+    "timestamp_utc": "2026-04-26T17:23:48.161698Z",
+    "run_dir": "runs/20260427_012348_train",
+    "output_dir": "runs"
+  },
+  "env": {
+    "F": 12,
+    "Sigma": 10,
+    "minislots_per_slot": 14,
+    "arrival_rate": 0.5,
+    "deadline_D": 3,
+    "traffic_model": "poisson"
+  },
+  "reward_profile": "default",
+  "mode": "baseline",
+  "baseline_policy": "Default baseline must remain unchanged and reproducible: Poisson arrival + default reward. Research mode may add explicit, comparable, reversible variants only.",
+  "training": {
+    "seed": 42,
+    "total_timesteps": 100000,
+    "early_stop_enabled": false,
+    "eval_freq": 5000,
+    "n_eval_episodes": 20
+  },
+  "ppo": {
+    "policy": "MlpPolicy",
+    "policy_kwargs": {
+      "net_arch": [
+        64,
+        64
+      ]
+    },
+    "n_steps": 1400,
+    "batch_size": 140,
+    "n_epochs": 10,
+    "learning_rate": 0.0003
+  },
+  "variance_env": {
+    "alpha": 0.3
+  }
+}

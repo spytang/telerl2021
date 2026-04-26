@@ -1,0 +1,98 @@
+{
+  "fixed_rr": {
+    "0.2": {
+      "violation_rate_mean": 0.0,
+      "violation_rate_std": 0.0,
+      "sla_threshold": 0.05,
+      "sla_exceeded": false
+    },
+    "0.5": {
+      "violation_rate_mean": 0.0023809523809523807,
+      "violation_rate_std": 0.0033671751485073696,
+      "sla_threshold": 0.05,
+      "sla_exceeded": false
+    },
+    "0.8": {
+      "violation_rate_mean": 0.045238095238095244,
+      "violation_rate_std": 0.012140522651411393,
+      "sla_threshold": 0.05,
+      "sla_exceeded": false
+    },
+    "1.0": {
+      "violation_rate_mean": 0.1357142857142857,
+      "violation_rate_std": 0.03547539148988415,
+      "sla_threshold": 0.05,
+      "sla_exceeded": true
+    },
+    "1.5": {
+      "violation_rate_mean": 0.5047619047619049,
+      "violation_rate_std": 0.0733858809877259,
+      "sla_threshold": 0.05,
+      "sla_exceeded": true
+    }
+  },
+  "baseline_ppo": {
+    "0.2": {
+      "violation_rate_mean": 0.0,
+      "violation_rate_std": 0.0,
+      "sla_threshold": 0.05,
+      "sla_exceeded": false
+    },
+    "0.5": {
+      "violation_rate_mean": 0.0023809523809523807,
+      "violation_rate_std": 0.0033671751485073696,
+      "sla_threshold": 0.05,
+      "sla_exceeded": false
+    },
+    "0.8": {
+      "violation_rate_mean": 0.045238095238095244,
+      "violation_rate_std": 0.012140522651411393,
+      "sla_threshold": 0.05,
+      "sla_exceeded": false
+    },
+    "1.0": {
+      "violation_rate_mean": 0.1357142857142857,
+      "violation_rate_std": 0.03547539148988415,
+      "sla_threshold": 0.05,
+      "sla_exceeded": true
+    },
+    "1.5": {
+      "violation_rate_mean": 0.5047619047619049,
+      "violation_rate_std": 0.0733858809877259,
+      "sla_threshold": 0.05,
+      "sla_exceeded": true
+    }
+  },
+  "var_ppo": {
+    "0.2": {
+      "violation_rate_mean": 0.0,
+      "violation_rate_std": 0.0,
+      "sla_threshold": 0.05,
+      "sla_exceeded": false
+    },
+    "0.5": {
+      "violation_rate_mean": 0.0023809523809523807,
+      "violation_rate_std": 0.0033671751485073696,
+      "sla_threshold": 0.05,
+      "sla_exceeded": false
+    },
+    "0.8": {
+      "violation_rate_mean": 0.045238095238095244,
+      "violation_rate_std": 0.012140522651411393,
+      "sla_threshold": 0.05,
+      "sla_exceeded": false
+    },
+    "1.0": {
+      "violation_rate_mean": 0.1357142857142857,
+      "violation_rate_std": 0.03547539148988415,
+      "sla_threshold": 0.05,
+      "sla_exceeded": true
+    },
+    "1.5": {
+      "violation_rate_mean": 0.5047619047619049,
+      "violation_rate_std": 0.0733858809877259,
+      "sla_threshold": 0.05,
+      "sla_exceeded": true
+    }
+  }
+}

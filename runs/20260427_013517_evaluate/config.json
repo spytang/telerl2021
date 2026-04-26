@@ -1,0 +1,14 @@
+{
+  "run_name": "evaluate",
+  "timestamp_utc": "2026-04-26T17:35:45.500700Z",
+  "episodes": 100,
+  "seed": 42,
+  "mode": "baseline",
+  "traffic_model": "poisson",
+  "reward_profile": "default",
+  "baseline_policy": "Default baseline must remain unchanged and reproducible: Poisson arrival + default reward. Research mode may add explicit, comparable, reversible variants only.",
+  "model_paths": {
+    "baseline_ppo": "./models/baseline_ppo/final_model.zip",
+    "var_ppo": "./models/var_ppo/final_model.zip"
+  }
+}
