@@ -1,4 +1,4 @@
-"""Verification script for baseline and variance-penalty RAN slicing environments."""
+"""Verification script for minimal/rich RAN slicing environments."""
 
 from __future__ import annotations
 
@@ -9,15 +9,22 @@ from ran_env import RANSlicingEnv
 from ran_env_var import RANSlicingEnvVar
 
 
-def run_random_episodes(env_cls, episodes: int = 5, seed_offset: int = 0):
+def run_random_episodes(env_factory, episodes: int = 5, seed_offset: int = 0):
     rewards = []
     latency_violations = []
     embb_outages = []
 
     for ep in range(episodes):
-        env = env_cls()
+        env = env_factory()
         obs, info = env.reset(seed=seed_offset + ep)
-        del obs, info
+        if obs.shape != env.observation_space.shape:
+            raise AssertionError(
+                f"reset observation shape {obs.shape} does not match "
+                f"space {env.observation_space.shape}"
+            )
+        if not env.observation_space.contains(obs):
+            raise AssertionError("reset observation is outside observation_space")
+        del info
 
         done = False
         total_reward = 0.0
@@ -26,7 +33,14 @@ def run_random_episodes(env_cls, episodes: int = 5, seed_offset: int = 0):
 
         while not done:
             action = env.action_space.sample()
-            _, reward, terminated, truncated, step_info = env.step(action)
+            obs, reward, terminated, truncated, step_info = env.step(action)
+            if obs.shape != env.observation_space.shape:
+                raise AssertionError(
+                    f"step observation shape {obs.shape} does not match "
+                    f"space {env.observation_space.shape}"
+                )
+            if not env.observation_space.contains(obs):
+                raise AssertionError("step observation is outside observation_space")
             total_reward += reward
             total_viol += step_info["urllc_latency_violations"]
             total_outages += step_info["embb_outages_this_step"]
@@ -69,12 +83,23 @@ def assert_variance_env_reward_bounded(episodes: int = 5, seed_offset: int = 100
 
 def main() -> None:
     print("Running Gymnasium check_env()...")
-    check_env(RANSlicingEnv())
+    check_env(RANSlicingEnv(obs_mode="minimal"))
+    check_env(RANSlicingEnv(obs_mode="rich"))
     check_env(RANSlicingEnvVar())
-    print("check_env() passed for both environments.\n")
+    print("check_env() passed for minimal, rich, and variance environments.\n")
 
-    base_stats = run_random_episodes(RANSlicingEnv, episodes=5, seed_offset=0)
-    var_stats = run_random_episodes(RANSlicingEnvVar, episodes=5, seed_offset=0)
+    minimal_env = RANSlicingEnv(obs_mode="minimal")
+    rich_env = RANSlicingEnv(obs_mode="rich")
+    var_env = RANSlicingEnvVar()
+    print(f"minimal observation shape: {minimal_env.observation_space.shape}")
+    print(f"rich observation shape: {rich_env.observation_space.shape}")
+    print(f"var observation shape: {var_env.observation_space.shape}\n")
+    minimal_env.close()
+    rich_env.close()
+    var_env.close()
+
+    base_stats = run_random_episodes(lambda: RANSlicingEnv(obs_mode="rich"), episodes=5, seed_offset=0)
+    var_stats = run_random_episodes(lambda: RANSlicingEnvVar(), episodes=5, seed_offset=0)
 
     print("RANSlicingEnv (5 random episodes):")
     print(f"  mean_reward: {base_stats['mean_reward']:.6f}")

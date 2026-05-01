@@ -11,13 +11,26 @@ from ran_env import RANSlicingEnv
 
 
 class RANSlicingEnvVar(RANSlicingEnv):
-    """Variance penalty encourages risk-averse puncturing, distributing
-    eMBB disruption evenly across codewords (Alsenwi et al., 2021)."""
+    """Tolerance-aware reward variant with load/margin/throughput variance penalty."""
 
-    def __init__(self, alpha: float = 0.3, **kwargs: Any) -> None:
+    def __init__(
+        self,
+        alpha: float = 0.3,
+        load_variance_weight: float = 0.5,
+        margin_variance_weight: float = 0.5,
+        throughput_variance_weight: float = 0.5,
+        rolling_variance_weight: float = 0.2,
+        throughput_window_size: int = 20,
+        **kwargs: Any,
+    ) -> None:
+        kwargs.setdefault("obs_mode", "rich")
         super().__init__(**kwargs)
         self.alpha = alpha
-        self.throughput_window: Deque[float] = deque(maxlen=20)
+        self.load_variance_weight = load_variance_weight
+        self.margin_variance_weight = margin_variance_weight
+        self.throughput_variance_weight = throughput_variance_weight
+        self.rolling_variance_weight = rolling_variance_weight
+        self.throughput_window: Deque[float] = deque(maxlen=throughput_window_size)
 
     def reset(
         self,
@@ -36,10 +49,27 @@ class RANSlicingEnvVar(RANSlicingEnv):
         embb_throughput = (self.F - embb_outages_this_step) / self.F
         self.throughput_window.append(embb_throughput)
 
-        if len(self.throughput_window) >= 2:
-            variance_penalty = self.alpha * np.var(self.throughput_window)
-        else:
-            variance_penalty = 0.0
+        load_variance = float(info.get("puncture_count_norm_variance", 0.0))
+        margin_variance = float(info.get("remaining_margin_norm_variance", 0.0))
+        throughput_variance = float(info.get("embb_throughput_variance", 0.0))
+        rolling_variance = float(np.var(self.throughput_window)) if len(self.throughput_window) >= 2 else 0.0
+
+        variance_penalty = self.alpha * (
+            self.load_variance_weight * load_variance
+            + self.margin_variance_weight * margin_variance
+            + self.throughput_variance_weight * throughput_variance
+            + self.rolling_variance_weight * rolling_variance
+        )
 
         reward = baseline_reward - variance_penalty
+        info.update(
+            {
+                "load_variance_penalty": load_variance,
+                "margin_variance_penalty": margin_variance,
+                "throughput_variance_penalty": throughput_variance,
+                "rolling_throughput_variance_penalty": rolling_variance,
+                "variance_penalty": float(variance_penalty),
+                "common_score_step": float(baseline_reward),
+            }
+        )
         return obs, float(reward), terminated, truncated, info

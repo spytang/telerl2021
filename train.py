@@ -1,9 +1,8 @@
-"""Train PPO agents for RAN slicing and compare against fixed round-robin."""
+"""Train rich-observation PPO agents for RAN slicing and compare baselines."""
 
 import os
-from typing import Dict, List, Optional, Tuple, Union
+from typing import Callable, Dict, List, Tuple
 
-import gymnasium as gym
 import numpy as np
 from stable_baselines3 import PPO
 from stable_baselines3.common.callbacks import EvalCallback
@@ -13,85 +12,59 @@ from ran_env import RANSlicingEnv
 from ran_env_var import RANSlicingEnvVar
 
 
-def evaluate_policy_on_baseline_env(
-    model: PPO, n_episodes: int = 100
+PolicyFn = Callable[[np.ndarray, int, RANSlicingEnv], int]
+
+
+def evaluate_policy_on_common_env(
+    policy_fn: PolicyFn, n_episodes: int = 100, arrival_rate: float = 0.5
 ) -> Dict[str, np.ndarray]:
-    """Evaluate a PPO model on RANSlicingEnv for apples-to-apples comparison."""
-    env = RANSlicingEnv()
+    """Evaluate any policy on the same rich-observation env and common score."""
+    env = RANSlicingEnv(obs_mode="rich", arrival_rate=arrival_rate)
 
-    rewards: List[float] = []
+    common_scores: List[float] = []
     violations: List[int] = []
     outages: List[int] = []
+    puncture_var: List[float] = []
+    margin_var: List[float] = []
 
     for ep in range(n_episodes):
         obs, _ = env.reset(seed=42 + ep)
         done = False
+        step_idx = 0
 
-        total_reward = 0.0
         total_violations = 0
         total_outages = 0
+        puncture_var_series: List[float] = []
+        margin_var_series: List[float] = []
 
         while not done:
-            action, _ = model.predict(obs, deterministic=True)
-            obs, reward, terminated, truncated, info = env.step(int(action))
-            total_reward += float(reward)
+            action = int(policy_fn(obs, step_idx, env))
+            obs, _reward, terminated, truncated, info = env.step(action)
             total_violations += int(info.get("urllc_latency_violations", 0))
             total_outages += int(info.get("embb_outages_this_step", 0))
+            puncture_var_series.append(float(info.get("puncture_count_variance", 0.0)))
+            margin_var_series.append(float(info.get("remaining_margin_variance", 0.0)))
             done = terminated or truncated
+            step_idx += 1
 
-        rewards.append(total_reward)
+        common_scores.append(-1.0 * total_violations - 0.5 * total_outages)
         violations.append(total_violations)
         outages.append(total_outages)
+        puncture_var.append(float(np.mean(puncture_var_series)))
+        margin_var.append(float(np.mean(margin_var_series)))
 
     env.close()
     return {
-        "rewards": np.array(rewards, dtype=np.float64),
+        "common_scores": np.array(common_scores, dtype=np.float64),
         "violations": np.array(violations, dtype=np.float64),
         "outages": np.array(outages, dtype=np.float64),
-    }
-
-
-def evaluate_fixed_rr(n_episodes: int = 100) -> Dict[str, np.ndarray]:
-    """Evaluate fixed round-robin policy: action(t) = t % 12."""
-    env = RANSlicingEnv()
-
-    rewards: List[float] = []
-    violations: List[int] = []
-    outages: List[int] = []
-
-    for ep in range(n_episodes):
-        obs, _ = env.reset(seed=42 + ep)
-        del obs
-        done = False
-        t = 0
-
-        total_reward = 0.0
-        total_violations = 0
-        total_outages = 0
-
-        while not done:
-            action = t % 12
-            _, reward, terminated, truncated, info = env.step(action)
-            total_reward += float(reward)
-            total_violations += int(info.get("urllc_latency_violations", 0))
-            total_outages += int(info.get("embb_outages_this_step", 0))
-            done = terminated or truncated
-            t += 1
-
-        rewards.append(total_reward)
-        violations.append(total_violations)
-        outages.append(total_outages)
-
-    env.close()
-    return {
-        "rewards": np.array(rewards, dtype=np.float64),
-        "violations": np.array(violations, dtype=np.float64),
-        "outages": np.array(outages, dtype=np.float64),
+        "puncture_var": np.array(puncture_var, dtype=np.float64),
+        "margin_var": np.array(margin_var, dtype=np.float64),
     }
 
 
 def summarize(metrics: Dict[str, np.ndarray]) -> Tuple[float, float, float, float]:
-    rewards = metrics["rewards"]
+    rewards = metrics["common_scores"]
     violations = metrics["violations"]
     outages = metrics["outages"]
     return (
@@ -112,10 +85,10 @@ def main() -> None:
     os.makedirs("./models/baseline_ppo", exist_ok=True)
     os.makedirs("./models/var_ppo", exist_ok=True)
 
-    env_baseline = RANSlicingEnv()
+    env_baseline = RANSlicingEnv(obs_mode="rich")
     env_var = RANSlicingEnvVar(alpha=1.0)
 
-    eval_env_baseline = Monitor(RANSlicingEnv())
+    eval_env_baseline = Monitor(RANSlicingEnv(obs_mode="rich"))
     eval_env_var = Monitor(RANSlicingEnvVar(alpha=1.0))
 
     callback_baseline = EvalCallback(
@@ -167,26 +140,38 @@ def main() -> None:
     model_baseline.save("./models/baseline_ppo/final_model")
     model_var.save("./models/var_ppo/final_model")
 
-    metrics_rr = evaluate_fixed_rr(n_episodes=100)
-    metrics_baseline = evaluate_policy_on_baseline_env(model_baseline, n_episodes=100)
-    metrics_var = evaluate_policy_on_baseline_env(model_var, n_episodes=100)
+    metrics_static = evaluate_policy_on_common_env(lambda _obs, _t, _env: 0, n_episodes=100)
+    metrics_rr = evaluate_policy_on_common_env(lambda _obs, t, env: t % env.F, n_episodes=100)
+    metrics_baseline = evaluate_policy_on_common_env(
+        lambda obs, _t, _env: int(model_baseline.predict(obs, deterministic=True)[0]),
+        n_episodes=100,
+    )
+    metrics_var = evaluate_policy_on_common_env(
+        lambda obs, _t, _env: int(model_var.predict(obs, deterministic=True)[0]),
+        n_episodes=100,
+    )
 
+    static_summary = summarize(metrics_static)
     rr_summary = summarize(metrics_rr)
     baseline_summary = summarize(metrics_baseline)
     var_summary = summarize(metrics_var)
 
-    print("\nAgent         | Mean Reward | Std Reward | Mean Violations | Mean Outages")
-    print("-" * 72)
+    print("\nAgent                | Common Score | Std Score | Mean Violations | Mean Outages")
+    print("-" * 82)
     print(
-        f"fixed_rr      | {rr_summary[0]:11.3f} | {rr_summary[1]:10.3f} |"
+        f"fixed_static        | {static_summary[0]:12.3f} | {static_summary[1]:9.3f} |"
+        f" {static_summary[2]:15.3f} | {static_summary[3]:12.3f}"
+    )
+    print(
+        f"fixed_rr            | {rr_summary[0]:12.3f} | {rr_summary[1]:9.3f} |"
         f" {rr_summary[2]:15.3f} | {rr_summary[3]:12.3f}"
     )
     print(
-        f"baseline_ppo  | {baseline_summary[0]:11.3f} | {baseline_summary[1]:10.3f} |"
+        f"baseline_ppo        | {baseline_summary[0]:12.3f} | {baseline_summary[1]:9.3f} |"
         f" {baseline_summary[2]:15.3f} | {baseline_summary[3]:12.3f}"
     )
     print(
-        f"var_ppo       | {var_summary[0]:11.3f} | {var_summary[1]:10.3f} |"
+        f"var_ppo             | {var_summary[0]:12.3f} | {var_summary[1]:9.3f} |"
         f" {var_summary[2]:15.3f} | {var_summary[3]:12.3f}"
     )
 

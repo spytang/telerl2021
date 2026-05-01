@@ -19,16 +19,14 @@ LAMBDA_LIST = [0.2, 0.4, 0.6, 0.8, 1.0, 1.2, 1.5]
 
 
 AgentStats = Dict[str, List[float]]
+PolicyFn = Callable[[np.ndarray, int, RANSlicingEnv], int]
 
 
-def evaluate_agent(
-    policy_fn: Callable[[np.ndarray, int], int],
-    env,
-    n_episodes: int = EPISODES,
-) -> AgentStats:
-    """Evaluate one policy on one environment and return per-episode rates."""
+def evaluate_agent(policy_fn: PolicyFn, env: RANSlicingEnv, n_episodes: int = EPISODES) -> AgentStats:
+    """Evaluate one policy on one environment and return per-episode rates/scores."""
     violation_rates: List[float] = []
     outage_rates: List[float] = []
+    common_scores: List[float] = []
 
     for ep in range(n_episodes):
         obs, _ = env.reset(seed=SEED_BASE + ep)
@@ -38,7 +36,7 @@ def evaluate_agent(
         total_embb_outages = 0
 
         while not done:
-            action = int(policy_fn(obs, step_idx))
+            action = int(policy_fn(obs, step_idx, env))
             obs, _, terminated, truncated, info = env.step(action)
             total_urllc_violations += int(info.get("urllc_latency_violations", 0))
             total_embb_outages += int(info.get("embb_outages_this_step", 0))
@@ -47,10 +45,12 @@ def evaluate_agent(
 
         violation_rates.append(total_urllc_violations / EPISODE_LENGTH)
         outage_rates.append(total_embb_outages / EPISODE_LENGTH)
+        common_scores.append(-1.0 * total_urllc_violations - 0.5 * total_embb_outages)
 
     return {
         "violation_rates": violation_rates,
         "outage_rates": outage_rates,
+        "common_scores": common_scores,
     }
 
 
@@ -59,51 +59,49 @@ def main() -> None:
     var_model = PPO.load("./models/var_ppo/final_model")
 
     stats = {
-        "fixed_rr": {"viol_mean": [], "viol_std": [], "out_mean": [], "out_std": []},
-        "baseline_ppo": {"viol_mean": [], "viol_std": [], "out_mean": [], "out_std": []},
-        "var_ppo": {"viol_mean": [], "viol_std": [], "out_mean": [], "out_std": []},
+        "PPO": {"score_mean": [], "score_std": [], "viol_mean": [], "viol_std": [], "out_mean": [], "out_std": []},
+        "VarPPO": {"score_mean": [], "score_std": [], "viol_mean": [], "viol_std": [], "out_mean": [], "out_std": []},
     }
 
     for lam in LAMBDA_LIST:
-        rr_env = RANSlicingEnv(arrival_rate=lam)
-        baseline_env = RANSlicingEnv(arrival_rate=lam)
+        baseline_env = RANSlicingEnv(arrival_rate=lam, obs_mode="rich")
         var_env = RANSlicingEnvVar(arrival_rate=lam, alpha=1.0)
 
-        rr_metrics = evaluate_agent(lambda _obs, t: t % rr_env.F, rr_env)
         baseline_metrics = evaluate_agent(
-            lambda obs, _t: int(baseline_model.predict(obs, deterministic=True)[0]),
+            lambda obs, _t, _env: int(baseline_model.predict(obs, deterministic=True)[0]),
             baseline_env,
         )
         var_metrics = evaluate_agent(
-            lambda obs, _t: int(var_model.predict(obs, deterministic=True)[0]),
+            lambda obs, _t, _env: int(var_model.predict(obs, deterministic=True)[0]),
             var_env,
         )
 
-        rr_env.close()
         baseline_env.close()
         var_env.close()
 
         for agent_name, metrics in (
-            ("fixed_rr", rr_metrics),
-            ("baseline_ppo", baseline_metrics),
-            ("var_ppo", var_metrics),
+            ("PPO", baseline_metrics),
+            ("VarPPO", var_metrics),
         ):
+            score = np.array(metrics["common_scores"], dtype=np.float64)
             viol = np.array(metrics["violation_rates"], dtype=np.float64)
             out = np.array(metrics["outage_rates"], dtype=np.float64)
+            stats[agent_name]["score_mean"].append(float(np.mean(score)))
+            stats[agent_name]["score_std"].append(float(np.std(score)))
             stats[agent_name]["viol_mean"].append(float(np.mean(viol)))
             stats[agent_name]["viol_std"].append(float(np.std(viol)))
             stats[agent_name]["out_mean"].append(float(np.mean(out)))
             stats[agent_name]["out_std"].append(float(np.std(out)))
 
         print(
-            f"λ={lam:.1f} | fixed_rr viol={stats['fixed_rr']['viol_mean'][-1]:.3f} "
-            f"| baseline viol={stats['baseline_ppo']['viol_mean'][-1]:.3f} "
-            f"| var_ppo viol={stats['var_ppo']['viol_mean'][-1]:.3f}"
+            f"λ={lam:.1f} | PPO score={stats['PPO']['score_mean'][-1]:.3f} "
+            f"| VarPPO score={stats['VarPPO']['score_mean'][-1]:.3f}"
         )
         print(
-            f"      |        outage={stats['fixed_rr']['out_mean'][-1]:.3f} "
-            f"|          outage={stats['baseline_ppo']['out_mean'][-1]:.3f}"
-            f"|        outage={stats['var_ppo']['out_mean'][-1]:.3f}"
+            f"      | PPO viol/out={stats['PPO']['viol_mean'][-1]:.3f}/"
+            f"{stats['PPO']['out_mean'][-1]:.3f} "
+            f"| VarPPO viol/out={stats['VarPPO']['viol_mean'][-1]:.3f}/"
+            f"{stats['VarPPO']['out_mean'][-1]:.3f}"
         )
 
     os.makedirs("./figures", exist_ok=True)
@@ -114,9 +112,8 @@ def main() -> None:
     fig, axes = plt.subplots(2, 1, figsize=(10, 8), sharex=True)
 
     plot_styles = {
-        "fixed_rr": {"color": "gray", "linestyle": "--", "label": "fixed_rr"},
-        "baseline_ppo": {"color": "blue", "linestyle": "-", "label": "baseline_ppo"},
-        "var_ppo": {"color": "orange", "linestyle": "-", "label": "var_ppo"},
+        "PPO": {"color": "blue", "linestyle": "-", "label": "PPO"},
+        "VarPPO": {"color": "orange", "linestyle": "-", "label": "VarPPO"},
     }
 
     for agent_name, style in plot_styles.items():
