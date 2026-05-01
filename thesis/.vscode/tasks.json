@@ -1,0 +1,69 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "XeLaTeX 完整编译 (含参考文献)",
+      "type": "shell",
+      "command": "latexmk",
+      "args": [
+        "-xelatex",
+        "-interaction=nonstopmode",
+        "-file-line-error",
+        "main.tex"
+      ],
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      },
+      "problemMatcher": {
+        "fileLocation": ["relative", "${workspaceFolder}"],
+        "pattern": {
+          "regexp": "^(.*):(\\d+): (.*)$",
+          "file": 1,
+          "line": 2,
+          "message": 3
+        }
+      },
+      "presentation": {
+        "reveal": "always",
+        "panel": "new"
+      }
+    },
+    {
+      "label": "XeLaTeX 快速编译",
+      "type": "shell",
+      "command": "xelatex",
+      "args": ["-interaction=nonstopmode", "-file-line-error", "main.tex"],
+      "group": "build",
+      "problemMatcher": {
+        "fileLocation": ["relative", "${workspaceFolder}"],
+        "pattern": {
+          "regexp": "^(.*):(\\d+): (.*)$",
+          "file": 1,
+          "line": 2,
+          "message": 3
+        }
+      },
+      "presentation": {
+        "reveal": "always"
+      }
+    },
+    {
+      "label": "Biber 处理参考文献",
+      "type": "shell",
+      "command": "biber",
+      "args": ["main"],
+      "group": "build"
+    },
+    {
+      "label": "清理编译产物",
+      "type": "shell",
+      "command": "bash",
+      "args": [
+        "-c",
+        "rm -f *.aux *.bbl *.bcf *.blg *.fdb_latexmk *.fls *.log *.out *.run.xml *.toc main.pdf"
+      ],
+      "group": "build"
+    }
+  ]
+}
