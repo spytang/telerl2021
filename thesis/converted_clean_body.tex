@@ -442,8 +442,6 @@ d_{\text{init}} = D = 3
 
 \subsection{容忍度感知观测空间设计}\label{331-ux72b6ux6009ux7a7aux95f4-mathcals-ux4e0e-tolerance-aware-observation}
 
-最新版本的环境不再采用严格的部分可观测设定，而是采用容忍度感知（Tolerance-aware）或 CSI 辅助（CSI-assisted）的 MDP 观测模型。本文使用的 \texttt{RANSlicingEnv} 支持两种观测模式：\texttt{minimal} 保留旧版本紧凑观测，\texttt{rich} 将 eMBB 码字可靠性裕度及其剩余裕度显式纳入状态。本文训练与评估的 PPO 和 VarPPO 均使用 \texttt{rich} 观测。
-
 紧凑的 \texttt{minimal} 观测用于兼容旧实验设定，其形式为
 \[
 \mathbf{o}^{\mathrm{min}}_t
@@ -477,11 +475,7 @@ d_{\text{init}} = D = 3
 
 需要强调的是，本文并不声称基站能够完美知道真实物理层解码阈值 \(C_w\)。在该仿真抽象中，\(C_w\) 被建模为基站侧可估计的 eMBB codeword reliability margin，或理解为 oracle-assisted reliability margin。实际系统中，gNB 可通过 CSI、CQI/MCS、BLER 预测、链路自适应、HARQ ACK/NACK 以及译码器反馈来估计当前码字的可靠性裕度。因此，本文模型应被解释为 tolerance-aware MDP 或 CSI-assisted MDP，而不是严格 POMDP。
 
-\begin{quote}
-\textbf{Modeling note.} Although the true decoding margin is not perfectly observable in a real system, we model \(C_w\) as an estimated reliability margin available at the gNB through CSI, MCS/BLER prediction, link adaptation and decoding feedback. Therefore, the proposed formulation should be interpreted as a tolerance-aware or CSI-assisted MDP rather than a strict POMDP.
-\end{quote}
-
-从代码演进角度看，原作者旧环境中已经存在类似的 codeword reliability state：\texttt{cw\_class}、\texttt{cw\_fun} 与 \texttt{embb\_state} 会刻画 eMBB 码字随打孔递减并最终发生中断的过程，且 \texttt{embb\_state} 会被放入状态。当前 \texttt{rich} 观测并非人为引入不可实现的全知信息，而是将旧版代码中隐含的码字可靠性状态显式化、归一化，并迁移到现代 Gymnasium 接口中。
+从代码演进角度看，旧环境已经在状态构造中保留了与 eMBB 码字可靠性相关的内部量：\texttt{cw\_class} 与 \texttt{cw\_fun} 用于描述码字在连续打孔下的剩余可承受程度，\texttt{embb\_state} 则由该可靠性状态映射得到，并作为智能体观测的一部分。因此，就 eMBB 码字可靠性这一信息维度而言，本文的 \texttt{rich} 观测与原有基线环境并不存在本质上的信息口径差异；当前实现主要是将这一状态量进一步显式化、归一化，并迁移到 Gymnasium 接口下统一表达。
 
 状态空间的形式化定义为：\(\mathcal{S} = \mathbb{R}^{60}\)，形状为 \texttt{(60,)}，数据类型为 \texttt{float32}。
 
@@ -608,7 +602,7 @@ d_{\text{init}} = D = 3
 \label{eq:r_var}
 \end{equation}
 
-其中，\(\mathrm{Var}(\tilde{\mathbf{p}}(t))\) 惩罚打孔集中在少数子载波上的负载不均衡；\(\mathrm{Var}(\tilde{\mathbf{g}}(t))\) 惩罚剩余可靠性裕度在子载波之间过度分化；\(\mathrm{Var}(\mathbf{b}(t))\) 惩罚不同 eMBB 码字吞吐/中断状态的不均匀；\(\mathrm{Var}(\mathcal{W}(t))\) 惩罚短期滚动吞吐量波动。代码中的类默认权重由 \texttt{ran\_env\_var.py} 给出：\(\alpha=0.3\)，\(w_{\text{load}}=0.5\)，\(w_{\text{margin}}=0.5\)，\(w_{\text{thr}}=0.5\)，\(w_{\text{roll}}=0.2\)，滚动窗口长度为 20。需要区分的是，本文当前训练脚本与鲁棒性脚本中实际采用 \texttt{RANSlicingEnvVar(alpha=1.0)}，即实验结果对应的方差惩罚总系数为 \(\alpha=1.0\)，其余四个分项权重保持上述默认值。
+其中，\(\mathrm{Var}(\tilde{\mathbf{p}}(t))\) 惩罚打孔集中在少数子载波上的负载不均衡；\(\mathrm{Var}(\tilde{\mathbf{g}}(t))\) 惩罚剩余可靠性裕度在子载波之间过度分化；\(\mathrm{Var}(\mathbf{b}(t))\) 惩罚不同 eMBB 码字吞吐/中断状态的不均匀；\(\mathrm{Var}(\mathcal{W}(t))\) 惩罚短期滚动吞吐量波动。本文实验统一采用 \(\alpha=1.0\) 作为方差惩罚强度，其余分项权重沿用环境默认设置。
 
 上述设计的作用不是改变 URLLC 具有更高优先级这一业务逻辑，而是在满足基本违约/中断惩罚的同时，引导智能体避免将打孔压力长期压到少数 eMBB 码字上。由于方差惩罚始终从基线奖励中扣除，VarPPO 的训练 reward 天然可能低于 PPO；本文在主结果图中以公共评分作为核心指标，避免将不同训练目标的 reward 曲线作不公平比较。
 
@@ -643,7 +637,7 @@ d_{\text{init}} = D = 3
 \item
   高负载泛化测试（Robustness Test）：在标准训练阶段，URLLC 泊松到达率固定为 \(\lambda=0.5\)。在评估阶段，引入越界到达率梯度测试序列 \(\Lambda_{\text{test}} = \{0.2, 0.4, 0.6, 0.8, 1.0, 1.2, 1.5\}\)，并在每个 \(\lambda\) 下独立运行 \(E=50\) 个 episode（每个 episode 长度 \(T=140\)）。该测试旨在比较 PPO 与 VarPPO 在流量分布迁移下的 URLLC 违约率和 eMBB 中断率变化，而不是假设任一策略在极端负载下仍可保持零违约。
 \item
-  对比基线算法：主实验保留 \texttt{fixed\_static} 与 \texttt{fixed\_rr} 两个非学习型基线。\texttt{fixed\_static} 总是输出动作 \(a_t=0\)，用于展示最朴素静态打孔策略的表现；\texttt{fixed\_rr} 不依赖状态观测，其在时步 \(t\) 的确定性动作输出为 \(a_t^{\mathrm{RR}} = t \bmod F = t \bmod 12\)，用于提供较强的轮询启发式参考。旧版本中的 \texttt{greedy\_min\_puncture} 已不再作为当前主图或 README 中的主实验方法，因此本文不将其纳入主结果描述。
+  对比基线算法：主实验保留 \texttt{fixed\_static} 与 \texttt{fixed\_rr} 两个非学习型基线。\texttt{fixed\_static} 总是输出动作 \(a_t=0\)，用于展示最朴素静态打孔策略的表现；\texttt{fixed\_rr} 不依赖状态观测，其在时步 \(t\) 的确定性动作输出为 \(a_t^{\mathrm{RR}} = t \bmod F = t \bmod 12\)，用于提供较强的轮询启发式参考。
 \end{enumerate}
 
 主要实验参数设定汇总：
@@ -805,9 +799,40 @@ VarPPO 方差总系数 \(\alpha\) & 1.0 & 训练脚本实际使用 \texttt{RANSl
 
 图~\ref{fig:performance_bar} 中的公共评分越高越好，因为它直接对应 URLLC 违约与 eMBB 中断的共同惩罚。其余错误率与方差类指标则越低越好。与训练曲线不同，公共评分对 PPO 与 VarPPO 使用同一评价函数，因此可作为二者最终策略质量的公平比较依据。
 
-根据当前 \texttt{evaluate\_and\_plot.py} 对已训练模型的 100 回合评估结果，四种方法的平均公共评分分别为：\texttt{fixed\_static} 为 \(-5.700\)，\texttt{fixed\_rr} 为 \(-1.515\)，PPO 为 \(-1.290\)，VarPPO 为 \(-1.215\)。对应的 URLLC violation rate 约为 0.0071、0.0071、0.0074 和 0.0072，eMBB outage rate 约为 0.0671、0.0074、0.0036 和 0.0029。由此可见，在当前训练步数和随机种子设定下，PPO 相比固定规则基线显著降低了 eMBB 中断率；VarPPO 相比 PPO 的改进幅度较小，但在公共评分和 eMBB 中断率上仍表现出一定优势。
+根据当前 \texttt{evaluate\_and\_plot.py} 对已训练模型的 100 回合评估结果，图~\ref{fig:performance_bar} 六个子图对应的原始统计值如表~\ref{tab:performance_bar_data} 所示。其中，URLLC violation rate 与 eMBB outage rate 均由每回合总次数除以 episode 长度 \(T=140\) 得到；表中误差项为 100 个测试回合上的标准差。
 
-\texttt{fixed\_static} 是朴素静态基线，主要用于展示持续打孔同一子载波会带来的风险；\texttt{fixed\_rr} 是较强的轮询启发式策略，能够天然降低打孔计数方差，但它不利用 URLLC 队列紧迫度、时隙位置或 eMBB 可靠性裕度估计。PPO 与 VarPPO 则使用相同的 \texttt{rich} 观测，二者差异仅在训练 reward 是否额外包含方差/负载均衡惩罚。因而，若图中 VarPPO 在公共评分或错误率上优于 PPO，应解释为方差感知 reward shaping 对最终策略产生了正面影响，而不是由训练 reward 的数值大小直接推出；同时也应看到，其提升主要体现在 eMBB outage 控制上，并非在所有指标上均显著优于 PPO。
+\begin{table}[H]
+\centering
+\small
+\caption{基础场景下性能柱状图对应的原始评估数据}
+\label{tab:performance_bar_data}
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{lcccccc}
+\hline
+方法 & Common Score & URLLC Rate & eMBB Outage Rate & eMBB Var & Puncture Var & Margin Var \\
+\hline
+\texttt{fixed\_static} & \(-5.700\pm1.212\) & \(0.0071\pm0.0084\) & \(0.0671\pm0.0050\) & \(4.35{\times}10^{-4}\pm2.99{\times}10^{-5}\) & \(1.52\pm0.326\) & \(2.65\pm0.418\) \\
+\texttt{fixed\_rr} & \(-1.515\pm1.379\) & \(0.0071\pm0.0084\) & \(0.0074\pm0.0073\) & \(5.03{\times}10^{-5}\pm4.97{\times}10^{-5}\) & \(0.174\pm0.0138\) & \(1.31\pm0.116\) \\
+\texttt{PPO} & \(-1.290\pm1.269\) & \(0.0074\pm0.0086\) & \(0.0036\pm0.0056\) & \(2.45{\times}10^{-5}\pm3.81{\times}10^{-5}\) & \(0.459\pm0.0880\) & \(1.01\pm0.102\) \\
+\texttt{VarPPO} & \(-1.215\pm1.209\) & \(0.0072\pm0.0084\) & \(0.0029\pm0.0046\) & \(2.01{\times}10^{-5}\pm3.18{\times}10^{-5}\) & \(0.426\pm0.0752\) & \(0.861\pm0.104\) \\
+\hline
+\end{tabular}
+}
+\end{table}
+
+首先，从公共评分看，\texttt{fixed\_static} 的平均得分仅为 \(-5.700\)，明显低于其余三种方法。这说明在 URLLC 到达后始终打孔同一子载波，会很快耗尽该频段上 eMBB 码字的容忍度，并把惩罚主要转化为 eMBB 中断。相比之下，\texttt{fixed\_rr} 通过轮询分摊打孔位置，将公共评分提升至 \(-1.515\)；PPO 进一步提升至 \(-1.290\)，说明利用 \texttt{rich} 观测中的队列、时隙位置和可靠性裕度信息后，智能体能够学习到比固定轮询更有针对性的打孔策略。VarPPO 的公共评分达到 \(-1.215\)，相较 PPO 提升 \(0.075\)，相当于公共惩罚幅度约降低 \(5.8\%\)；相较 \texttt{fixed\_rr} 提升 \(0.300\)，相当于公共惩罚幅度约降低 \(19.8\%\)。这表明方差惩罚带来的收益不是数量级上的跃迁，但在相同评估口径下确实进一步改善了综合指标。
+
+其次，从 URLLC violation rate 看，四种方法都处于 \(0.0071\sim0.0074\) 的很窄区间内，对应每 140 个 mini-slot 的 episode 中大约发生 1 次 URLLC 时延违约。\texttt{fixed\_static} 与 \texttt{fixed\_rr} 的平均违约次数均为 \(1.000\) 次/回合，PPO 为 \(1.040\) 次/回合，VarPPO 为 \(1.010\) 次/回合。该结果说明，在基础到达率 \(\lambda=0.5\) 下，各策略对 URLLC 侧服务能力的差异并不显著；也就是说，学习型方法的主要优势并不是通过牺牲或大幅改变 URLLC 服务率获得的。VarPPO 相比 PPO 的 URLLC violation rate 略低，但差异小于标准差范围，因此本文不将其解释为 URLLC 时延保障能力的显著提升。
+
+第三，从 eMBB outage rate 看，策略差异非常清晰。\texttt{fixed\_static} 的 eMBB outage rate 为 \(0.0671\)，即平均每回合 \(9.400\) 次 eMBB 中断；\texttt{fixed\_rr} 降至 \(0.0074\)，平均 \(1.030\) 次/回合，说明简单的均匀轮询已经能显著避免持续压榨同一 eMBB 码字。PPO 进一步将该指标降至 \(0.0036\)，平均 \(0.500\) 次/回合，相比 \texttt{fixed\_rr} 约减少 \(51.5\%\)，相比 \texttt{fixed\_static} 约减少 \(94.7\%\)。VarPPO 的 eMBB outage rate 最低，为 \(0.0029\)，平均 \(0.410\) 次/回合；相较 PPO 又减少约 \(18.0\%\)。因此，图中公共评分的提升主要来源于 eMBB 中断控制，而不是 URLLC violation 的大幅变化。
+
+第四，eMBB 吞吐方差与中断率呈现一致趋势。\texttt{fixed\_static} 的 eMBB 吞吐方差为 \(4.35\times10^{-4}\)，显著高于其他方法，反映出持续打孔同一频段会造成更强的短时吞吐波动。\texttt{fixed\_rr} 将其降至 \(5.03\times10^{-5}\)，PPO 进一步降至 \(2.45\times10^{-5}\)，VarPPO 最低，为 \(2.01\times10^{-5}\)。VarPPO 相比 PPO 约降低 \(18.0\%\)，相比 \texttt{fixed\_rr} 约降低 \(60.0\%\)。这说明方差感知奖励不仅减少了码字中断次数，也让 eMBB 侧的短期服务状态更平滑。
+
+第五，puncture-count variance 需要结合策略机制谨慎解释。\texttt{fixed\_rr} 的打孔计数方差最低，仅为 \(0.174\)，这是因为轮询策略按子载波编号机械循环，天然追求打孔次数均匀，而不是因为它理解了队列或可靠性状态。PPO 与 VarPPO 的打孔方差分别为 \(0.459\) 和 \(0.426\)，均高于 \texttt{fixed\_rr}，但远低于 \texttt{fixed\_static} 的 \(1.52\)。这表明学习型策略并不会单纯追求“每个子载波被打孔次数完全相等”，而是在 URLLC deadline、当前 slot/mini-slot 位置和 eMBB 可靠性裕度之间做折中。VarPPO 相比 PPO 将该方差降低约 \(7.2\%\)，说明额外的负载均衡惩罚确实改变了策略偏好，但其作用是温和的，而不是把策略强行变成轮询。
+
+最后，remaining-margin variance 更能体现 VarPPO 的设计目标。该指标衡量不同子载波剩余可靠性裕度 \(C_w-p_f(t)\) 的分化程度。\texttt{fixed\_static} 的 margin variance 高达 \(2.65\)，说明持续打孔会使少数子载波的剩余裕度快速下降，而其他子载波仍相对空闲，可靠性风险高度集中。\texttt{fixed\_rr} 降至 \(1.31\)，PPO 进一步降至 \(1.01\)，VarPPO 最低为 \(0.861\)。相较 PPO，VarPPO 将剩余裕度方差降低约 \(14.8\%\)；相较 \texttt{fixed\_rr} 降低约 \(34.3\%\)。这与 VarPPO 在奖励中显式惩罚剩余裕度方差的设计相吻合，说明其并非只是在减少总中断数，而是在更细粒度地保护各 eMBB 码字的可靠性余量。
+
+综合六个指标可以看出，\texttt{fixed\_static} 主要作为反例，展示“持续打孔同一位置”会带来严重 eMBB 破坏；\texttt{fixed\_rr} 是较强的负载均衡启发式，尤其在 puncture-count variance 上表现最好，但它不利用系统状态，因此在 eMBB outage、吞吐方差和剩余裕度方差上仍弱于学习型策略。PPO 利用 \texttt{rich} 观测后，显著改善 eMBB 中断控制；VarPPO 在 PPO 基础上进一步改善公共评分、eMBB outage rate、eMBB throughput variance 和 remaining-margin variance，但提升幅度较为温和。因而，本文将 VarPPO 的贡献界定为：在不明显牺牲 URLLC 时延指标的前提下，通过方差感知 reward shaping 改善 eMBB 侧可靠性风险分布，而不是声称其在所有单项指标上均绝对优于启发式方法。
 
 \section{打孔负载方差与通信稳定性机理}\label{44-embbux541eux5410ux91cfux65b9ux5deeux4e0eux6df1ux5c42ux901aux4fe1ux7a33ux5b9aux6027ux673aux7406}
 
@@ -820,9 +845,36 @@ VarPPO 方差总系数 \(\alpha\) & 1.0 & 训练脚本实际使用 \texttt{RANSl
 \label{fig:variance_dist}
 \end{figure}
 
-打孔计数方差越低，说明 URLLC 对 eMBB 资源的抢占越均匀，单个码字或子载波被连续压榨到中断阈值附近的概率越小。VarPPO 的训练目标显式惩罚打孔计数方差和剩余裕度方差，因此该图可用于观察 reward shaping 是否真的改变了策略的负载分摊方式。
+打孔计数方差越低，说明 URLLC 对 eMBB 资源的抢占越均匀，单个码字或子载波被连续压榨到中断阈值附近的概率越小。为避免仅凭箱线图形状作定性判断，表~\ref{tab:puncture_variance_box_data} 列出了图~\ref{fig:variance_dist} 对应的原始分布统计量，包括均值、标准差、最小值、第一四分位数、中位数、第三四分位数和最大值。
 
-需要谨慎的是，打孔计数方差低并不自动意味着所有性能指标都最优。例如 \texttt{fixed\_rr} 也可能具有较低方差，但它并不感知队列长度、剩余 deadline 或 \(C_w\) 可靠性裕度估计。因而本文将该图作为策略机理分析，而将图~\ref{fig:performance_bar} 中的 \(\mathrm{common\_score}\) 作为主性能比较依据。
+\begin{table}[H]
+\centering
+\small
+\caption{打孔计数方差箱线图对应的分布统计量}
+\label{tab:puncture_variance_box_data}
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{lccccccc}
+\hline
+方法 & Mean & Std & Min & Q1 & Median & Q3 & Max \\
+\hline
+\texttt{fixed\_static} & \(1.5179\) & \(0.3263\) & \(0.7633\) & \(1.3270\) & \(1.5120\) & \(1.7003\) & \(2.4428\) \\
+\texttt{fixed\_rr} & \(0.1736\) & \(0.0138\) & \(0.1372\) & \(0.1633\) & \(0.1748\) & \(0.1842\) & \(0.2091\) \\
+\texttt{PPO} & \(0.4589\) & \(0.0880\) & \(0.2860\) & \(0.3918\) & \(0.4521\) & \(0.5212\) & \(0.8006\) \\
+\texttt{VarPPO} & \(0.4263\) & \(0.0752\) & \(0.2536\) & \(0.3771\) & \(0.4201\) & \(0.4641\) & \(0.6646\) \\
+\hline
+\end{tabular}
+}
+\end{table}
+
+从整体分布看，静态策略的打孔方差均值为 \(1.5179\)，中位数为 \(1.5120\)，最大值达到 \(2.4428\)，显著高于其他三种策略。这与其动作机制完全一致：只要选择服务 URLLC，它总是打孔同一子载波，导致单个频段的打孔计数持续累积，而其他子载波几乎不承担抢占压力。因此，该策略的箱线图不仅位置最高，而且离散程度也最大，标准差达到 \(0.3263\)，说明不同 episode 中 URLLC 到达波动会进一步放大局部打孔压力的不稳定性。结合上一节的 eMBB outage rate 可知，这种高度集中的打孔分布会直接转化为更高的 eMBB 码字中断风险。
+
+\texttt{fixed\_rr} 的打孔方差最低，均值仅为 \(0.1736\)，中位数为 \(0.1748\)，四分位区间约为 \([0.1633,0.1842]\)，标准差也只有 \(0.0138\)。这说明轮询策略在“打孔次数均匀性”这一单一维度上非常稳定，相比 \texttt{fixed\_static} 将平均打孔方差降低约 \(88.6\%\)。不过，这一结果来自确定性的循环动作 \(a_t=t\bmod F\)，并不是来自对 URLLC 队列、剩余 deadline 或 eMBB 码字裕度的状态感知。换言之，\texttt{fixed\_rr} 的低方差更多反映了动作编号上的机械均匀，而不一定意味着它能把打孔放在当前最适合承受破坏的码字上。
+
+PPO 的打孔方差均值为 \(0.4589\)，高于 \texttt{fixed\_rr}，但相比 \texttt{fixed\_static} 仍降低约 \(69.8\%\)。其分布中位数为 \(0.4521\)，第一、第三四分位数分别为 \(0.3918\) 和 \(0.5212\)。这表明 PPO 学到的策略并不是简单复制轮询，而是在队列状态、mini-slot 位置、打孔历史和可靠性裕度之间进行权衡：当某些子载波具有更高剩余裕度或当前动作更有利于降低即时惩罚时，策略可能会有意识地偏向这些资源。因此，PPO 的打孔次数分布不如 \texttt{fixed\_rr} 均匀，但它在上一节中取得了更低的 eMBB outage rate 和更高的 common score，说明“适度不均匀”有时是基于状态信息的选择结果，而非调度失效。
+
+VarPPO 的分布介于 PPO 与 \texttt{fixed\_rr} 之间，均值为 \(0.4263\)，中位数为 \(0.4201\)，相比 PPO 的均值降低约 \(7.1\%\)。更重要的是，VarPPO 的第三四分位数从 PPO 的 \(0.5212\) 降至 \(0.4641\)，最大值从 \(0.8006\) 降至 \(0.6646\)，四分位距也由 \(0.1294\) 缩小至 \(0.0870\)。这说明方差惩罚并未把策略强行拉成固定轮询，而是降低了高方差 episode 出现的概率，使打孔压力在训练策略内部得到更温和的分摊。该结果与 VarPPO 奖励函数中对 puncture-count variance 和 remaining-margin variance 的显式惩罚相一致，也解释了其在图~\ref{fig:performance_bar} 中对 eMBB outage rate、eMBB 吞吐方差和 remaining-margin variance 的同步改善。
+
+因此，图~\ref{fig:variance_dist} 的核心含义不是简单地按打孔方差给四种方法排序，而是揭示不同策略的调度机理差异。\texttt{fixed\_rr} 在打孔计数方差上最低，但它缺少状态感知，无法根据 \(C_w\) 可靠性裕度和 URLLC 紧迫程度动态调整；PPO 能利用 \texttt{rich} 观测改善中断控制，但仍可能在部分 episode 中形成较高的打孔集中度；VarPPO 则在 PPO 的状态感知能力基础上，通过奖励塑造压低高方差尾部，使负载分摊更稳定。因而本文将图~\ref{fig:variance_dist} 作为策略机理分析，将图~\ref{fig:performance_bar} 中的 \(\mathrm{common\_score}\) 作为主性能比较依据：低打孔方差是通信稳定性的一个重要侧面，但只有与 eMBB 中断率、剩余裕度分布和公共评分共同观察时，才能完整评价调度策略的优劣。
 
 \section{算法时间复杂度与真实基站部署的计算开销分析}\label{45-ux7b97ux6cd5ux65f6ux95f4ux590dux6742ux5ea6ux4e0eux771fux5b9eux57faux7ad9ux90e8ux7f72ux7684ux8ba1ux7b97ux5f00ux9500ux5206ux6790}
 
@@ -879,10 +931,6 @@ VarPPO 方差总系数 \(\alpha\) & 1.0 & 训练脚本实际使用 \texttt{RANSl
 
 第三，仿真环境的建模尚未覆盖真实的复杂网络特征。当前的实验设定采用单小区、单下行链路和固定频域资源数量 \(F=12\)，以抽象的 eMBB codeword tolerance \(C_w\) 表示可靠性裕度。虽然 \(C_w\) 在本文中被解释为可由 CSI、MCS/BLER 预测、链路自适应和译码反馈估计的可靠性裕度，但真实系统并不能完美知道物理层解码边界。该环境尚未纳入多小区间干扰（ICI）、用户移动性导致的空间信道快速衰落、估计误差、反馈时延以及大规模天线（Massive MIMO）多用户联合调度等现实网络特征。因此，当前实验结果更适合作为基于 PPO 的打孔调度算法的可复现实验验证，距离真实商用部署的系统级评估仍有一段距离。
 
-第四，对比基线算法的维度尚需丰富。本文当前主性能图主要比较静态打孔、轮询打孔、PPO 与 VarPPO，鲁棒性图则聚焦 PPO 与 VarPPO。旧版本中的 \texttt{greedy\_min\_puncture} 已不再作为当前主实验方法。未来若能引入更多经典启发式策略或更先进的深度强化学习算法，将有助于从多个维度更精准地界定 PPO 在 eMBB/URLLC 联合切片调度问题中的性能边界与相对优势。
-
-第五，面对分布外（Out-of-Distribution, OOD）突发流量的泛化能力仍待验证。如本文在泛化测试（Generalization test）代码中所设定的离散突发到达率（\texttt{LAMBDA\_LIST\ =\ {[}0.2,\ 0.4,\ 0.6,\ 0.8,\ 1.0,\ 1.2,\ 1.5{]}}）所示，当 URLLC 流量的泊松到达率 \emph{λ} 远超训练时所覆盖的分布区间时，强化学习策略往往面临严峻考验。尽管本研究尝试评估策略的鲁棒性，但如何在未见过的极端高负载或网络突发流量下进一步降低 URLLC 违约并控制 eMBB 中断率，仍是未来走向实际网络部署时必须解决的关键问题。
-
 \section{未来研究展望}\label{53-ux672aux6765ux7814ux7a76ux5c55ux671b}
 
 \begin{figure}[H]
@@ -896,9 +944,7 @@ VarPPO 方差总系数 \(\alpha\) & 1.0 & 训练脚本实际使用 \texttt{RANSl
 
 在算法层面，未来的改进可聚焦于提升模型的收敛性与泛化能力。首先，可通过增加训练步数（Total Timesteps）来缓解当前 PPO 算法收敛不足的问题。作为同策略（on-policy）算法，PPO 依赖大量的交互样本来进行充分的策略探索与稳定的梯度估计，因此扩大采样规模是最直接的优化方向。其次，可引入课程学习（Curriculum Learning）机制来优化训练路径。结合本文在分布外鲁棒性测试中所使用的离散泊松到达率序列（如 \texttt{LAMBDA\_LIST\ =\ {[}0.2,\ 0.4,\ 0.6,\ 0.8,\ 1.0,\ 1.2,\ 1.5{]}}），可将训练过程按 URLLC 负载难度分阶段推进：引导智能体先在低负载、低波动场景中学习基础的 eMBB 资源分配先验，再逐步过渡至极端高负载、强突发的复杂场景。这种平滑过渡能有效避免智能体在训练初期因环境的高随机性而陷入剧烈震荡。此外，面对 5G/6G 严格的 SLA 要求，未来还可引入多目标约束强化学习或风险规避（Risk-Averse）强化学习（风险规避 RL）框架，从而在算法底层增强智能体对时延与可靠性违规风险的综合控制能力。最新综述研究也指出，面向 B5G 网络切片的多智能体深度强化学习（MADRL）在多域资源协同与自适应资源编排中具有较大潜力\cite{cui2026}。因此，本文提出的方差感知 PPO 思路未来可进一步扩展为多智能体架构，并结合联邦学习等分布式训练机制，在 O-RAN 云原生环境中探索计算、通信与切片资源的联合闭环优化。
 
-在工程应用层面：从 Gymnasium 仿真走向真实网络控制器的系统级映射
-
-本文当前的 DRL 打孔策略虽已在自建的 Gymnasium 仿真环境中得到验证，但要使其转化为具备真正落地潜力的 5G/6G 系统级解决方案，必须考虑其在真实开放网络架构（如 O-RAN）中的跨平台逻辑映射。未来研究可探索将本文训练的 PPO 模型从离线仿真迁移至近实时网络控制器中作为 AI 微服务（如 xApp）运行，具体的系统级映射关系可归纳为以下三个核心层面：
+在工程应用层面，本文当前的 DRL 打孔策略虽已在自建的 Gymnasium 仿真环境中得到验证，但要使其转化为具备真正落地潜力的 5G/6G 系统级解决方案，必须考虑其在真实开放网络架构（如 O-RAN）中的跨平台逻辑映射。未来研究可探索将本文训练的 PPO 模型从离线仿真迁移至近实时网络控制器中作为 AI 微服务（如 xApp）运行，具体的系统级映射关系可归纳为以下三个核心层面：
 
 第一，部署位置的映射：模型从 Gym 交互环境向控制器微服务转化。 在本文的代码实现中，智能体通过 \texttt{env.step(action)} 的理想化步进与环境进行同步交互。在真实的系统级部署中，底层的 Gym 仿真环境将被真实的基站物理节点所取代。承载着本文 Actor-Critic 神经网络权重的 PPO 智能体，将作为独立的推理模块部署在网络控制器上，通过标准的南向接口周期性地读取基站状态，并推理出针对 URLLC 与 eMBB 切片的宏观资源调配策略。
 
