@@ -95,7 +95,7 @@
 
 在上述研究内容的基础上，本文相较于现有的 DRL 资源分配工作，主要创新点体现在以下两个维度：
 
-（1）在奖励函数塑造层面：将风险规避思想凝练为频域打孔负载均衡（Frequency-domain Puncturing Load Balancing, FPLB）。现有调度方案多以最小化系统级 eMBB 中断率为单一优化目标。然而，在复杂流量分布下，此类策略可能形成局部资源过度使用，即持续偏向少数具有高信道裕度的 eMBB 链路，进而造成用户级公平性失衡与尾部体验劣化。本文借鉴 Alsenwi 等人\cite{alsenwi2024distributed}在多智能体连续资源分配中的方差控制思想，并在纯离散抢占决策 MDP 框架内提出面向风险规避的方差惩罚策略优化算法（VarPPO）。其核心不是泛化地惩罚所有吞吐波动，而是在奖励函数中显式约束不同频域资源之间的打孔计数方差与剩余可靠性裕度方差，引导智能体在可用资源池内更均衡地分摊物理层打孔效应；码字吞吐状态与滚动吞吐方差则作为辅助稳定性指标，用于抑制由局部过度打孔引发的短期吞吐抖动。该机制旨在不增加多智能体架构复杂度的前提下，在保障 URLLC 时延约束的同时改善 eMBB 侧可靠性风险分布。
+（1）在奖励函数塑造层面：将风险规避思想凝练为频域打孔负载均衡（FPLB）。现有调度方案多以最小化系统级 eMBB 中断率为单一优化目标。然而，在复杂流量分布下，此类策略可能形成局部资源过度使用，即持续偏向少数具有高信道裕度的 eMBB 链路，进而造成用户级公平性失衡与尾部体验劣化。本文借鉴 Alsenwi 等人\cite{alsenwi2024distributed}在多智能体连续资源分配中的方差控制思想，并在纯离散抢占决策 MDP 框架内提出面向风险规避的方差惩罚策略优化算法（VarPPO）。其核心不是泛化地惩罚所有吞吐波动，而是在奖励函数中显式约束不同频域资源之间的打孔计数方差与剩余可靠性裕度方差，引导智能体在可用资源池内更均衡地分摊物理层打孔效应；码字吞吐状态与滚动吞吐方差则作为辅助稳定性指标，用于抑制由局部过度打孔引发的短期吞吐抖动。该机制旨在不增加多智能体架构复杂度的前提下，在保障 URLLC 时延约束的同时改善 eMBB 侧可靠性风险分布。
 
 （2）在评估体系层面：构建了面向分布外（Out-of-Distribution, OOD）URLLC 突发负载的泛化性测试。现有的 DRL 资源分配文献（包括 Saggese 与 Alsenwi 的工作）大多局限于在单一或分布内（In-Distribution）的流量参数下训练和测试，而真实网络中的 URLLC 到达率可能随业务场景发生明显变化。为此，本文设计了覆盖 URLLC 泊松到达率 \(\lambda \in \{0.2,0.4,0.6,0.8,1.0,1.2,1.5\}\) packets/minislot 的扫频测试集。该测试用于观察在远高于训练默认值 \(\lambda=0.5\) 的负载下，PPO 与 VarPPO 在 URLLC 违约率和 eMBB 中断率上的变化趋势，并为后续面向 O-RAN xApp 的鲁棒性评估提供可复现的实验入口。
 
@@ -234,7 +234,10 @@ eMBB 业务主要旨在提供极高的数据传输速率并保证中等程度的
 \end{itemize}
 
 智能体的核心目标是寻找最优策略 $\pi^*(a \mid s)$，使得期望累积折扣回报最大化：
-$$J(\pi) = \mathbb{E}_{\pi} \left[ \sum_{t=0}^{\infty} \gamma^t \mathcal{R}(s_t, a_t) \right]$$
+\begin{equation}
+J(\pi) = \mathbb{E}_{\pi} \left[ \sum_{t=0}^{\infty} \gamma^t \mathcal{R}(s_t, a_t) \right].
+\label{eq:mdp_objective}
+\end{equation}
 
 在此框架下，状态价值函数 $V^\pi(s)$ 和动作价值函数 $Q^\pi(s, a)$ 分别定义为从状态 $s$ 出发、以及在状态 $s$ 执行动作 $a$ 后，遵循策略 $\pi$ 所获得的期望累积回报。两者通过 Bellman 方程递归联系，构成了后续深度强化学习算法（如基于 Actor-Critic 架构的 PPO 算法）中网络参数更新的基石。
 
@@ -252,7 +255,10 @@ $$J(\pi) = \mathbb{E}_{\pi} \left[ \sum_{t=0}^{\infty} \gamma^t \mathcal{R}(s_t,
 \subsection{从 Q-Learning 到 DQN：基于值函数方法的演进与局限性}\label{222-从-q-learning-到-dqn基于值函数方法的进展与瓶颈}
 
 Q-Learning~\cite{watkins1992} 是最经典的无模型（Model-free）强化学习算法之一。这里的“无模型”并非指没有数学模型，而是指智能体在决策时，不需要预先掌握环境的转移概率分布或先验动态方程（例如，调度器不需要知道无线信道衰落的精确马尔可夫转移矩阵或流量到达的泊松分布参数），仅凭与环境的交互试错即可学习。其核心是通过时序差分（Temporal Difference, TD）方法，迭代更新最优动作价值函数 $Q^*(s, a)$：
-$$Q(s_t, a_t) \leftarrow Q(s_t, a_t) + \alpha \left[ r_t + \gamma \max_{a'} Q(s_{t+1}, a') - Q(s_t, a_t) \right]$$
+\begin{equation}
+Q(s_t, a_t) \leftarrow Q(s_t, a_t) + \alpha \left[ r_t + \gamma \max_{a'} Q(s_{t+1}, a') - Q(s_t, a_t) \right].
+\label{eq:q_learning_update}
+\end{equation}
 在该更新规则中，Q-Learning 是一种异策略（Off-policy）算法，即智能体用于更新价值网络的数据，不必严格由当前的调度策略产生，它可以利用历史探索产生的数据进行学习。然而，传统 Q-Learning 以查找表（Q-table）的形式存储所有“状态-动作”对的 Q 值。在本文的 5G RAN 切片场景中，状态空间包含了 URLLC 队列长度、各个频段上 eMBB 码字的剩余打孔次数等特征的组合。面对如此高维的特征，传统 Q 表会遭遇“维数爆炸（Curse of Dimensionality）”，导致其在物理内存存储与穷举查询上均不可行。
 
 为克服这一理论瓶颈，深度 Q 网络（Deep Q-Network, DQN）~\cite{fan2020} 采用深度神经网络 $Q(s, a; \theta)$ 来拟合近似传统的 Q 表，并通过引入两项关键技术来解决神经网络在强化学习中容易发散的问题：
@@ -280,18 +286,19 @@ $$Q(s_t, a_t) \leftarrow Q(s_t, a_t) + \alpha \left[ r_t + \gamma \max_{a'} Q(s_
 \subsection{策略梯度定理、PPO 的裁剪目标与 GAE 优势估计}\label{223-ux7b56ux7565ux68afux5ea6ux5b9aux7406ppo-ux7684ux88c1ux526aux76eeux6807ux4e0e-gae-ux4f18ux52bfux4f30ux8ba1}
 
 在动态的无线网络资源切片与调度问题中，由于 URLLC 业务具有突发性强、时延要求极低等特点，传统启发式算法难以在微秒级的 mini-slot 时间尺度内完成复杂的最优决策。因此，本文引入基于策略梯度（Policy Gradient）的深度强化学习理论，为混合业务场景下的智能抢占（Preemption）调度提供数学基础。策略梯度方法直接对参数化策略 $\pi_\theta(a \mid s)$ 进行梯度上升优化。根据策略梯度定理~\cite{sutton1999}，目标函数 $J(\pi_\theta)$ 关于策略参数 $\theta$ 的梯度可写为
-\[
+\begin{equation}
 \nabla_\theta J(\pi_\theta)
 =
 \mathbb{E}_{\pi_\theta}
 \left[
 \nabla_\theta \log \pi_\theta(a_t \mid s_t)\cdot A^\pi(s_t,a_t)
 \right],
-\]
+\label{eq:policy_gradient}
+\end{equation}
 其中，$A^\pi(s_t,a_t)=Q^\pi(s_t,a_t)-V^\pi(s_t)$ 为优势函数（Advantage Function），用于衡量在状态 $s_t$ 下执行动作 $a_t$ 相对于该状态平均预期收益的超额价值。为了降低直接采样带来的梯度估计方差，现代策略梯度算法通常采用 Actor-Critic 架构：Actor 网络负责更新策略，Critic 网络负责拟合状态价值函数 $V^\pi(s_t)$，以指导 Actor 的更新方向。
 
 传统策略梯度方法在参数更新时往往难以有效控制步长，更新幅度过大容易导致策略性能崩溃（Policy Collapse），而更新幅度过小又会使收敛速度变慢。信赖域策略优化（TRPO）通过引入 KL 散度约束来限制新旧策略的偏离程度，但其二阶优化过程通常涉及复杂的矩阵运算，计算开销较高。近端策略优化（Proximal Policy Optimization, PPO）作为一种高效的一阶近似算法，通过设计裁剪替代目标函数（Clipped Surrogate Objective）在不显式引入复杂约束优化的前提下，实现了近似的信赖域更新，其目标函数定义为
-\[
+\begin{equation}
 L^{\mathrm{CLIP}}(\theta)
 =
 \mathbb{E}_t
@@ -301,14 +308,9 @@ r_t(\theta)\hat{A}_t,\,
 \mathrm{clip}\big(r_t(\theta),1-\epsilon,1+\epsilon\big)\hat{A}_t
 \Big)
 \right],
-\]
-其中概率比
-\[
-r_t(\theta)
-=
-\frac{\pi_\theta(a_t \mid s_t)}{\pi_{\theta_{\mathrm{old}}}(a_t \mid s_t)}
-\]
-衡量了策略更新前后的动作概率变化，裁剪超参数 $\epsilon$ 用于限制更新幅度。当概率比超出 $[1-\epsilon,1+\epsilon]$ 的范围且该更新对目标函数具有正向贡献时，梯度将被裁剪，从而抑制策略向极端方向过度更新，提升训练过程的稳定性。
+\label{eq:ppo_clip_objective}
+\end{equation}
+其中概率比 \(r_t(\theta)=\pi_\theta(a_t \mid s_t)/\pi_{\theta_{\mathrm{old}}}(a_t \mid s_t)\) 衡量了策略更新前后的动作概率变化，裁剪超参数 $\epsilon$ 用于限制更新幅度。当概率比超出 $[1-\epsilon,1+\epsilon]$ 的范围且该更新对目标函数具有正向贡献时，梯度将被裁剪，从而抑制策略向极端方向过度更新，提升训练过程的稳定性。
 
 为进一步降低 Actor 更新时的梯度方差并增强训练稳定性，本文底层采用的 Stable-Baselines3 强化学习框架整合了 PPO 与广义优势估计（Generalized Advantage Estimation, GAE-$\lambda$）机制。GAE 通过引入衰减参数 $\lambda_{\mathrm{GAE}}$，对不同时间步长的时序差分（TD）误差进行指数加权求和，在优势函数估计的偏差（Bias）与方差（Variance）之间取得较好的理论折中。结合本文所研究的分布外（Out-of-Distribution, OOD）URLLC 到达率鲁棒性测试场景（如到达率 $\lambda \in [0.2,1.5]$ 的变化），PPO 的裁剪机制有助于抑制过大的策略更新，GAE 则借助价值网络对长期收益进行平滑估计，从而为后续在高随机流量环境中的训练提供较稳定的算法基础。
 
@@ -354,14 +356,7 @@ r_t(\theta)
   \textbf{Mini-slot（微时隙）层}：为了适应 URLLC 流量极其严苛的低延迟要求，每个 1 ms 的 Slot 被进一步划分为 \(M = 14\) 个 Mini-slot。这一设定对应了 5G NR 物理层标准中每个 1 ms 时隙包含 14 个 OFDM 符号的特性\cite{alqwider2024}。Mini-slot 是 PPO 智能体执行基本调度与针对 URLLC 突发流量进行抢占决策（Preemption Decision）的最小时间步；该决策在物理层表现为对相应 eMBB 码字的打孔效应（Puncturing Effect）。
 \end{itemize}
 
-单次回合（Episode）的总时步数由相干时间内的总 Mini-slot 数量决定：
-
-\[T = \Sigma \times M = 10 \times 14 = 140\]
-
-时步索引为 \(t \in \{0, 1, \ldots, T-1\}\)，当前所属的 Slot 索引由以下整除关系确定：
-
-\[\text{slot\_idx}(t) = \left\lfloor \frac{t}{M} \right\rfloor\]
-
+单次回合（Episode）的总时步数由相干时间内的总 Mini-slot 数量决定，即 \(T = \Sigma \times M = 10 \times 14 = 140\)。时步索引为 \(t \in \{0, 1, \ldots, T-1\}\)，当前所属的 Slot 索引由整除关系 \(\text{slot\_idx}(t) = \left\lfloor t/M \right\rfloor\) 确定。
 在频域上，系统带宽被划分为 \(F = 12\) 个正交频率资源（仿真中对频域资源的抽象离散化单元，每个频率资源对应一路独立的eMBB码字），它们与时域结构共同构成了供 eMBB 和 URLLC 服务复用的时频资源网格。
 
 \subsection{eMBB 码字容忍度模型与完美 CSI 上界假设}\label{312-embb-ux7801ux5b57ux5bb9ux5fcdux5ea6ux6a21ux578b}
@@ -370,10 +365,11 @@ r_t(\theta)
 
 需要明确的是，本文中的 eMBB 码字可靠性裕度 \(C_w\) 并非真实 gNB 在 HARQ 反馈返回前可绝对确定获得的物理层隐藏量。为聚焦研究离散抢占决策与频域打孔负载均衡机制本身，本文在第三章及后续仿真实验中采用完美信道状态信息（Perfect CSI）假设：环境在每个 Slot 开始时向智能体提供当前 eMBB 码字的理想可靠性裕度 \(C_w\)，该值可被理解为 oracle-assisted 的码字容忍度上界。换言之，本文结果刻画的是在理想信道可观测条件下 VarPPO 可达到的理论性能上界，而不是直接声称真实 5G gNB 能在存在 CQI 反馈时延、MCS 选择误差和 HARQ 延迟的情况下精确获知 \(C_w\)。
 
-在每个 Slot 开始时（即当 \(\text{slot\_idx}(t)\) 发生变化时），环境为每个子载波 \(f \in \{0,1,\ldots,F-1\}\) 独立采样一个更广泛的整数容忍度：
-
-\[C_{w,f} \equiv \tau_f \sim \text{Uniform}\{1, 2, 3, 4\}, \quad \forall f\]
-
+在每个 Slot 开始时（即当 \(\text{slot\_idx}(t)\) 发生变化时），环境为每个子载波 \(f \in \{0,1,\ldots,F-1\}\) 独立采样一个更广泛的整数容忍度，即
+\begin{equation}
+C_{w,f} \equiv \tau_f \sim \text{Uniform}\{1, 2, 3, 4\}, \quad \forall f.
+\label{eq:codeword_tolerance_distribution}
+\end{equation}
 \(\tau_f\) 与 \(C_{w,f}\) 在本文仿真中等价，均表示子载波 \(f\) 上的 eMBB 码字在同一 Slot 内能够承受的最大打孔次数。与此同时，系统会维护每个子载波的累积打孔计数 \(p_f(t)\) 和码字中断状态 \(O_f(t) \in \{0, 1\}\)。一旦 \(p_f(t) > C_{w,f}\)，码字即发生中断。
 
 
@@ -381,18 +377,9 @@ r_t(\theta)
 
 \subsection{URLLC 到达过程与时延预算模型}\label{321-urllc-ux5230ux8fbeux8fc7ux7a0bux4e0eux65f6ux5ef6ux9884ux7b97ux6a21ux578b}
 
-URLLC 数据包到达过程建模为参数 $(\lambda)$ 的泊松过程。在时步 $(t)$ 的到达量为：
-\[
-A(t) \sim \text{Poisson}(\lambda)
-\]
+URLLC 数据包到达过程建模为参数 \(\lambda\) 的泊松过程，即在时步 \(t\) 的到达量满足 \(A(t) \sim \text{Poisson}(\lambda)\)，基础训练中设定为 \(\lambda = 0.5\)。为测试算法在越界到达率（Out-of-Distribution Arrival Rates）下的泛化能力与鲁棒性，本章对 URLLC 的时延容忍度约束进行了重新校准。在母本基线模型中，\(1\,\text{ms}\) 的时隙被划分为 \(14\) 个 Mini-slot，其设定的排队时延上限为 \(7\) 个 Mini-slot（对应 \(0.5\,\text{ms}\)）。然而，根据 \(3\text{GPP}\) 规范，URLLC 服务的端到端（E2E）时延红线为严格的 \(1\,\text{ms}\)。此 \(1\,\text{ms}\) 预算需被传播延迟、传输延迟、排队延迟及软硬件处理延迟共同瓜分\cite{truong2026}。考虑到在实际架构中，基带处理（如编码、解码）通常需占用 \(3\) 个以上的 OFDM 符号时间\cite{esswie2018}，若在基站排队调度阶段即消耗 \(0.5\,\text{ms}\)，将极大增加整体 E2E 时延超标的风险。
 
-在基础训练中设定 $(\lambda = 0.5)$。为测试算法在越界到达率（Out-of-Distribution Arrival Rates）下的泛化能力与鲁棒性，本章对 URLLC 的时延容忍度约束进行了重新校准。在母本基线模型中，$1\,\text{ms}$ 的时隙被划分为 $14$ 个 Mini-slot，其设定的排队时延上限为 $7$ 个 Mini-slot（对应 $0.5\,\text{ms}$）。然而，根据 $3\text{GPP}$ 规范，URLLC 服务的端到端（E2E）时延红线为严格的 $1\,\text{ms}$。此 $1\,\text{ms}$ 预算需被传播延迟、传输延迟、排队延迟及软硬件处理延迟共同瓜分\cite{truong2026}。考虑到在实际架构中，基带处理（如编码、解码）通常需占用 $3$ 个以上的 OFDM 符号时间\cite{esswie2018}，若在基站排队调度阶段即消耗 $0.5\,\text{ms}$，将极大增加整体 E2E 时延超标的风险。
-
-因此，为更真实地还原 $5\text{G NR}$ 物理层对超低时延的严苛要求，本章将每个新到达数据包的初始剩余排队时限（Remaining Deadline）严格缩紧为
-\[
-d_{\text{init}} = D = 3
-\]
-个 Mini-slot（约 $0.21\,\text{ms}$）。新包以先进先出（FIFO）顺序进入等待队列 $(\mathcal{Q}(t))$。这一修改为后续的空口传输及潜在的重传机制预留了充足的时间预算，但也使得系统在发生突发流量时，留给调度器平滑 eMBB 资源被抢占影响的时间窗口急剧缩小。
+因此，为更真实地还原 \(5\text{G NR}\) 物理层对超低时延的严苛要求，本章将每个新到达数据包的初始剩余排队时限（Remaining Deadline）严格缩紧为 \(d_{\text{init}} = D = 3\) 个 Mini-slot（约 \(0.21\,\text{ms}\)）。新包以先进先出（FIFO）顺序进入等待队列 \(\mathcal{Q}(t)\)。这一修改为后续的空口传输及潜在的重传机制预留了充足的时间预算，但也使得系统在发生突发流量时，留给调度器平滑 eMBB 资源被抢占影响的时间窗口急剧缩小。
 
 需要特别说明的是，为确保性能对比评估的绝对公平性，本研究并未直接引用基线文献中 $D=7$ 时的实验数据。所有的基线算法（包括原始的 PPO 算法与传统的固定规则分配算法）均在本章构建的 $D=3$ 这一相同严苛的马尔可夫决策环境约束下进行了重新评估与测试。所有算法在同等紧迫的时延压力下竞争资源，从而客观、真实地反映了本文所提算法在鲁棒性和 eMBB 中断率控制上的相对优势。
 
@@ -411,29 +398,19 @@ d_{\text{init}} = D = 3
 \begin{enumerate}
 \def\labelenumi{\arabic{enumi}.}
 \item
-  到达（Arrival）：向队列尾部追加 \(A(t)\) 个初始剩余时限为 \(D\) 的数据包：
-
-  \[\mathcal{Q}(t) \leftarrow \mathcal{Q}(t) \cup \{D\}^{A(t)}\]
+  到达（Arrival）：向队列尾部追加 \(A(t)\) 个初始剩余时限为 \(D\) 的数据包，即 \(\mathcal{Q}(t) \leftarrow \mathcal{Q}(t) \cup \{D\}^{A(t)}\)。
 \item
-  服务（Service）：若队列非空且 \(a_t < F\)（即未选择 Defer 动作），则从队列头部弹出一个包进行服务（每步至多服务一个包）：
-
-  \[\text{if } \mathcal{Q}(t) \neq \emptyset \text{ and } a_t < F: \quad \text{popleft}(\mathcal{Q}(t))\]
+  服务（Service）：若队列非空且 \(a_t < F\)（即未选择 Defer 动作），则从队列头部弹出一个包进行服务（每步至多服务一个包），即当 \(\mathcal{Q}(t) \neq \emptyset\) 且 \(a_t < F\) 时执行 \(\text{popleft}(\mathcal{Q}(t))\)。
 \item
-  时限递减与违约统计（Deadline Update \& Violation）：对队列中所有剩余包的时限递减，并统计违约数量：
-
-  \[d_k \leftarrow d_k - 1, \quad \forall k \in \mathcal{Q}(t)\]
-
-  \[V(t) = \left|\{k \in \mathcal{Q}(t) : d_k \leq 0\}\right|\]
+  时限递减与违约统计（Deadline Update \& Violation）：对队列中所有剩余包的时限递减，即 \(d_k \leftarrow d_k - 1, \forall k \in \mathcal{Q}(t)\)，并统计违约数量 \(V(t)=\left|\{k \in \mathcal{Q}(t) : d_k \leq 0\}\right|\)。
 \end{enumerate}
 
-时限耗尽的包（\(d_k \leq 0\)）将被从队列中移除，并计入 URLLC 违约计数，不再保留：
-
-\[\mathcal{Q}(t+1) = \{k \in \mathcal{Q}(t) : d_k > 0\}\]
-
+时限耗尽的包（\(d_k \leq 0\)）将被从队列中移除，并计入 URLLC 违约计数，不再保留，即 \(\mathcal{Q}(t+1) = \{k \in \mathcal{Q}(t) : d_k > 0\}\)。
 因此，队列长度的动态更新可以写成闭式：
-
-\[|\mathcal{Q}(t+1)| = |\mathcal{Q}(t)| + A(t) - \mathbb{1}[a_t < F \wedge \mathcal{Q}(t) \neq \emptyset] - V(t)\]
-
+\begin{equation}
+|\mathcal{Q}(t+1)| = |\mathcal{Q}(t)| + A(t) - \mathbb{1}[a_t < F \wedge \mathcal{Q}(t) \neq \emptyset] - V(t).
+\label{eq:queue_length_update}
+\end{equation}
 综上，上述闭式更新关系刻画了 URLLC 缓冲队列的马尔可夫动态守恒。系统在 \(t+1\) 状态的队列长度，由当前队列积压、泊松到达增量、有效服务离队（受控于动作指示函数）以及超时违约清理四项共同决定。
 
 
@@ -445,17 +422,18 @@ d_{\text{init}} = D = 3
 \subsection{容忍度感知观测空间设计}\label{331-ux72b6ux6009ux7a7aux95f4-mathcals-ux4e0e-tolerance-aware-observation}
 
 紧凑的 \texttt{minimal} 观测用于兼容旧实验设定，其形式为
-\[
+\begin{equation}
 \mathbf{o}^{\mathrm{min}}_t
 =
 \bigl[\tilde{q}(t),\tilde{d}_{\min}(t),
 \tilde{p}_0(t),\ldots,\tilde{p}_{F-1}(t)\bigr]^\top
 \in \mathbb{R}^{2+F}.
-\]
+\label{eq:minimal_observation}
+\end{equation}
 在默认 \(F=12\) 时，该观测维度为 14。
 
 \texttt{rich} 观测则进一步加入时延、时间位置和 Perfect-CSI 可靠性裕度信息，可写为
-\[
+\begin{equation}
 \begin{aligned}
 \mathbf{o}^{\mathrm{rich}}_t =
 \bigl[
@@ -469,11 +447,10 @@ d_{\text{init}} = D = 3
 \tilde{A}_{t-1},\tilde{S}_{t-1},\tilde{V}_{t-1},\tilde{E}_{t-1}
 \bigr]^\top ,
 \end{aligned}
-\]
+\label{eq:rich_observation}
+\end{equation}
 其中 \(\mathbf{h}_D(t)\) 为 URLLC 剩余时限直方图，\(\tilde{s}(t)\)、\(\tilde{m}(t)\) 和 \(\tilde{r}(t)\) 分别表示当前 slot 索引、当前 slot 内 mini-slot 索引以及当前 slot 内剩余 mini-slot 数的归一化值；\(\tilde{\mathbf{p}}(t)\) 为各子载波累计打孔次数；\(\tilde{\mathbf{C}}_w(t)\) 为完美 CSI 假设下各 eMBB 码字的理想可靠性裕度；\(\tilde{\mathbf{g}}(t)=\mathrm{clip}((\mathbf{C}_w(t)-\mathbf{p}(t))/C_{\max},-1,1)\) 为归一化剩余裕度；\(\mathbf{O}(t)\) 为各码字中断标志；最后四项表示上一时步的到达包数、成功服务包数、URLLC 违约数和 eMBB 中断数。默认 \(D=3,F=12\) 时，\texttt{rich} 观测维度为
-\[
-2+D+3+4F+4 = 2+3+3+48+4 = 60.
-\]
+\(2+D+3+4F+4 = 2+3+3+48+4 = 60\)。
 
 本文此处采用的是完美 CSI 支持的 oracle-assisted reliability margin。该设定使状态转移保持为标准的 tolerance-aware MDP，并用于评估所提策略在理想可观测条件下的性能上界。若转向真实系统，\(C_w\) 只能由 CSI、CQI/MCS、BLER 预测、链路自适应、HARQ ACK/NACK 以及译码器反馈间接估计，且会受到反馈时延和估计误差影响；此时问题应进一步扩展为含延迟观测和状态噪声的 POMDP 或鲁棒 MDP。本文将该方向作为后续工程化研究问题，而不在当前仿真结果中混入非理想 CSI 误差。
 
@@ -489,39 +466,40 @@ d_{\text{init}} = D = 3
 
 \subsection{动作空间 \texorpdfstring{$\mathcal{A}$}{A} 与抢占语义}\label{332-ux52a8ux4f5cux7a7aux95f4-mathcala-ux4e0eux6253ux5b54ux8bedux4e49}
 
-动作空间为离散整数空间：
-
-\[\mathcal{A} = \{0, 1, 2, \ldots, F\} = \{0, 1, \ldots, 12\}\]
-
-其中动作索引 $0$ 至 $F-1$ 分别对应在 $F$ 个子载波上执行抢占调度，动作索引 $F$ 对应暂缓执行（Defer）。物理层的打孔仅作为该抢占决策的执行后果计入 \(p_f(t)\) 和 \(O_f(t)\)。
+动作空间为离散整数空间 \(\mathcal{A} = \{0, 1, 2, \ldots, F\} = \{0, 1, \ldots, 12\}\)。其中动作索引 $0$ 至 $F-1$ 分别对应在 $F$ 个子载波上执行抢占调度，动作索引 $F$ 对应暂缓执行（Defer）。物理层的打孔仅作为该抢占决策的执行后果计入 \(p_f(t)\) 和 \(O_f(t)\)。
 
 各动作的语义如下：
 
-\[a_t = \begin{cases} f \in \{0,\ldots,F-1\} & \text{对子载波 } f \text{ 执行抢占调度，服务一个 URLLC 包} \\ F = 12 & \text{Defer：暂缓抢占，不服务任何 URLLC 包} \end{cases}\]
-
-动作 \(a_t = f < F\) 的执行逻辑可形式化为：若 \(\mathcal{Q}(t) \neq \emptyset\) 且 \(a_t = f\)，则弹出队列头部数据包，并对子载波 \(f\) 记录一次由抢占导致的物理层打孔计数：
-
-\[p_f(t) \leftarrow p_f(t) + 1\]
-
+\begin{equation}
+a_t =
+\begin{cases}
+f \in \{0,\ldots,F-1\}, & \text{对子载波 } f \text{ 执行抢占调度，服务一个 URLLC 包}, \\
+F = 12, & \text{Defer：暂缓抢占，不服务任何 URLLC 包}.
+\end{cases}
+\label{eq:action_semantics}
+\end{equation}
+动作 \(a_t = f < F\) 的执行逻辑可形式化为：若 \(\mathcal{Q}(t) \neq \emptyset\) 且 \(a_t = f\)，则弹出队列头部数据包，并对子载波 \(f\) 记录一次由抢占导致的物理层打孔计数，即 \(p_f(t) \leftarrow p_f(t) + 1\)。
 若此时累积打孔次数超过该子载波本 Slot 的 eMBB 码字理想容忍度 \(C_w\)，且该码字尚未被标记为中断，则触发 eMBB 码字中断事件：
-
-\[O_f(t) = \begin{cases} 1 & \text{若 } p_f(t) > C_{w,f}(t) \text{ 且 } O_f(t-1) = 0 \\ O_f(t-1) & \text{否则} \end{cases}\]
-
-每步的 eMBB 新增中断计数为：
-
-\[E(t) = \sum_{f=0}^{F-1} \mathbb{1}\!\left[O_f \text{ 在时步 } t \text{ 首次被置为 1}\right] \in \{0, 1\}\]
-
+\begin{equation}
+O_f(t) =
+\begin{cases}
+1, & \text{若 } p_f(t) > C_{w,f}(t) \text{ 且 } O_f(t-1) = 0, \\
+O_f(t-1), & \text{否则}.
+\end{cases}
+\label{eq:embb_outage_state}
+\end{equation}
+每步的 eMBB 新增中断计数为
+\begin{equation}
+E(t) = \sum_{f=0}^{F-1} \mathbb{1}\!\left[O_f \text{ 在时步 } t \text{ 首次被置为 1}\right] \in \{0, 1\}.
+\label{eq:embb_new_outage_count}
+\end{equation}
 由于每步至多打孔一个子载波，故 \(E(t) \in \{0, 1\}\)。
-
-\begin{quote}
 
 特别指出：在 5G NR 物理层中，URLLC 对 eMBB 的打孔（Puncturing）机制本质上属于基于资源粒子（RE）或子载波粒度的硬性抢占（Hard Preemption），而非类似非正交多址（NOMA）的连续功率叠加。因此，基站调度在频域上的决策具有严格的正交性与互斥性——每个子载波要么被完全占用，要么不被占用。
 
 这一物理约束直接决定了强化学习动作空间必须是离散的。若采用连续控制中的高斯策略（Gaussian Policy），智能体输出的连续动作（如 $a_t = 4.7$）需要通过取整映射到具体子载波（如第 5 号载波），但取整操作（如 Floor/Round）在几乎处处不可导或梯度为零，从而无法为 Actor 网络提供有效的策略梯度信号，导致 PPO 在训练过程中发生退化。
 
 因此，本模型采用离散分类策略头（Categorical Policy）。策略网络通过 Softmax 层输出覆盖所有 $F$ 个子载波及 Defer 动作的概率质量函数（PMF），并基于该分布进行采样以确定抢占位置。该设计在通信语义上与 5G 资源调度的正交物理特性保持一致，在数学上则保证了对数概率的可微性，从而支持有效的策略梯度优化。
-
-\end{quote}
 
 
 
@@ -557,7 +535,7 @@ d_{\text{init}} = D = 3
 （Continuing Task）的稠密步进惩罚（Dense Step-Penalty）机制：
 \begin{equation}
   R_{\text{baseline}}(t)
-  = -1.0 \times V(t) - 0.5 \times E(t)
+  = -1.0 \times V(t) - 0.5 \times E(t).
   \label{eq:r_baseline}
 \end{equation}
 
@@ -602,18 +580,19 @@ d_{\text{init}} = D = 3
       + w_{\text{roll}}\mathrm{Var}(\mathcal{W}(t))
     \Big).
 \end{aligned}
-\label{eq:r_var}
+  \label{eq:r_var}
 \end{equation}
 
 其中，\(\mathrm{Var}(\tilde{\mathbf{p}}(t))\) 惩罚打孔集中在少数子载波上的频域负载不均衡；\(\mathrm{Var}(\tilde{\mathbf{g}}(t))\) 惩罚剩余可靠性裕度在子载波之间过度分化；\(\mathrm{Var}(\mathbf{b}(t))\) 惩罚不同 eMBB 码字吞吐/中断状态的不均匀；\(\mathrm{Var}(\mathcal{W}(t))\) 惩罚短期滚动吞吐量波动。为避免不同方差项因量纲和数值范围差异而在奖励中失衡，本文在实现中先进行数量级对齐（Magnitude Alignment）：打孔计数按每个 Slot 的 \(M=14\) 个 mini-slot 归一化，剩余裕度按最大容忍度 \(C_{\max}=4\) 归一化并截断至 \([-1,1]\)，码字吞吐状态 \(\mathbf{b}(t)\) 本身为 \(\{0,1\}\) 二元变量，其方差上界为 \(0.25\)，滚动吞吐量同样位于 \([0,1]\) 区间。因而四个惩罚项在进入加权求和前均被压缩到无量纲、近似同阶的数值范围。
 
 在此基础上，\texttt{RANSlicingEnvVar} 采用的分项权重为
-\[
+\begin{equation}
 w_{\text{load}}=0.5,\quad
 w_{\text{margin}}=0.5,\quad
 w_{\text{thr}}=0.5,\quad
 w_{\text{roll}}=0.2.
-\]
+\label{eq:varppo_reward_weights}
+\end{equation}
 前三项保留相同权重，是因为它们分别对应频域打孔压力、可靠性裕度和码字可用状态三个直接风险维度；滚动吞吐方差仅作为短期平滑辅助项，因此采用更小权重以避免其主导策略更新。本文实验统一采用 \(\alpha=1.0\) 作为均衡惩罚总强度；该配置来自归一化后的经验标定与训练稳定性检查，并未声称经过完备的网格搜索（Grid Search）。因此，本文将其解释为固定奖励塑造设置下的算法验证，后续仍可通过系统化超参数搜索或自适应多目标权重学习进一步改进。
 
 上述设计的作用不是改变 URLLC 具有更高优先级这一业务逻辑，而是在满足基本违约/中断惩罚的同时，引导智能体避免将打孔压力长期压到少数 eMBB 码字上。由于频域负载均衡惩罚始终从基线奖励中扣除，VarPPO 的训练 reward 天然可能低于 PPO；本文在主结果图中以公共评分作为核心指标，避免将不同训练目标的 reward 曲线作不公平比较。
@@ -721,7 +700,7 @@ VarPPO 分项权重 & \(w_i\) & load/margin/thr 均为 0.5，roll 为 0.2（归�
 
 在 MDP 核心要素的形式化定义层面，本章采用 Perfect-CSI 辅助的 tolerance-aware MDP 观测模型，将 eMBB 码字可靠性裕度 \(C_w\) 建模为理想可观测的 oracle-assisted 上界变量，用于刻画当前算法在完美信道可观测条件下的理论性能上限。动作空间采用离散分类策略，与 5G 物理层打孔机制的正交互斥性保持一致，避免了连续动作取整操作导致的梯度失效问题。奖励函数方面，本章设计了两套体系：基线稠密奖励函数以持续步进惩罚取代稀疏终止惩罚；VarPPO 奖励函数在此基础上引入频域打孔负载均衡项，通过打孔计数方差与剩余裕度方差抑制 eMBB 风险在少数子载波上集中，并以码字吞吐状态方差和滚动吞吐方差作为辅助稳定性约束\cite{alsenwi2021}。
 
-在算法工程实现层面，本章基于 Stable-Baselines3 框架采用双分支 Actor-Critic 网络架构，Actor 与 Critic 分支各自独立维护两层 64 维全连接隐藏层（Tanh 激活），有效抑制了离散动作 logits 的极化风险。评估方案方面，本章制定了分布外（OOD）泛化测试协议：主性能图比较 \texttt{fixed\_static}、\texttt{fixed\_rr}、\texttt{PPO} 与 \texttt{VarPPO}，鲁棒性图仅比较 PPO 与 VarPPO，在到达率梯度序列 \(\Lambda_{\text{test}} = \{0.2, 0.4, \ldots, 1.5\}\) 上检验频域打孔负载均衡奖励塑造在流量分布迁移下的影响\cite{saggese2021}。
+在算法工程实现层面，本章基于 Stable-Baselines3 框架采用双分支 Actor-Critic 网络架构，Actor 与 Critic 分支各自独立维护两层 64 维全连接隐藏层（Tanh 激活），有效抑制了离散动作 logits 的极化风险。评估方案方面，本章制定了分布外（OOD）泛化测试协议：主性能图比较四类调度策略，鲁棒性图仅比较 PPO 与 VarPPO，并在到达率梯度序列 \(\Lambda_{\text{test}} = \{0.2, 0.4, \ldots, 1.5\}\) 上检验频域打孔负载均衡奖励塑造在流量分布迁移下的影响\cite{saggese2021}。
 
 本章所构建的系统模型与算法框架，为后续章节的对比实验与机理分析提供了统一且可复现的评估基准，也为 6G 超低时延网络切片调度问题的进一步仿真研究提供参考。
 
@@ -831,11 +810,7 @@ VarPPO 均衡惩罚总系数 \(\alpha\) & 1.0 & 频域负载均衡奖励的总�
 
 \section{基础场景下的系统综合性能对比}\label{43-ux57faux7840ux573aux666fux4e0bux7684ux7cfbux7edfux7efcux5408ux6027ux80fdux5bf9ux6bd4}
 
-为量化评估训练收敛后各智能体的调度能力，本节在 \(\lambda=0.5\) 的验证环境中进行独立测试回合。条形图（图~\ref{fig:performance_bar}）比较静态抢占、确定性轮询、基线 PPO 与 VarPPO 四种方法，并采用所有方法共享的综合评级分数 \(S_{\text{eval}}\) 作为主指标。其定义与式~\eqref{eq:s_eval} 一致，即
-\[
-S_{\text{eval}}=-N_{\text{URLLC}}^{\text{viol}}-0.5N_{\text{eMBB}}^{\text{out}},
-\]
-其中 \(N_{\text{URLLC}}^{\text{viol}}\) 和 \(N_{\text{eMBB}}^{\text{out}}\) 分别表示单个测试回合内的 URLLC 时延违约次数和 eMBB 码字中断次数。该图同时给出 URLLC violation rate、eMBB outage rate、\(\mathrm{Var}(\mathbf{b})\)、\(\mathrm{Var}(\tilde{\mathbf{p}})\) 和 \(\mathrm{Var}(\tilde{\mathbf{g}})\) 等辅助指标。
+为量化评估训练收敛后各智能体的调度能力，本节在 \(\lambda=0.5\) 的验证环境中进行独立测试回合。条形图（图~\ref{fig:performance_bar}）比较静态抢占、确定性轮询、基线 PPO 与 VarPPO 四种方法，并采用所有方法共享的综合评级分数 \(S_{\text{eval}}\) 作为主指标。其定义与式~\eqref{eq:s_eval} 一致，其中 \(N_{\text{URLLC}}^{\text{viol}}\) 和 \(N_{\text{eMBB}}^{\text{out}}\) 分别表示单个测试回合内的 URLLC 时延违约次数和 eMBB 码字中断次数。该图同时给出 URLLC violation rate、eMBB outage rate、\(\mathrm{Var}(\mathbf{b})\)、\(\mathrm{Var}(\tilde{\mathbf{p}})\) 和 \(\mathrm{Var}(\tilde{\mathbf{g}})\) 等辅助指标。
 
 \begin{figure}[H]
 \centering
@@ -934,11 +909,7 @@ VarPPO 的分布介于 PPO 与 \texttt{fixed\_rr} 之间，均值为 \(0.4263\)�
 
 空间复杂度评估： PPO 算法经过训练后，实际部署于线上的主要是 Actor 网络。本实验采用的是轻量级的全连接多层感知机（MLP），包含输入状态空间 \(S\) 与输出动作空间 \(A\) 的映射，其空间复杂度可近似写为 \(\mathcal{O}(|S| \cdot H + H^2 + H \cdot |A|)\)，其中 \(|S|=60\)，\(|A|=13\)，\(H=64\) 为隐藏层宽度。若只计算 Actor 前向推理权重，参数量约为 \(60\times64+64\times64+64\times13=8768\) 个权重，外加少量偏置；以单精度浮点数（FP32）存储时仅为数十 KB 量级。实际模型文件还包含 Critic、优化器或框架元数据，因此整体为数百 KB 量级，对仿真环境和边缘计算节点均较轻量。
 
-时间复杂度与推理时延（Inference Latency）： 算法的单次前向推断计算复杂度同样为 \(\mathcal{O}(|S|H + H^2 + H|A|)\)。对当前 \(60\)-\(64\)-\(64\)-\(13\) 的 Actor MLP 而言，若按一次乘法和一次加法约计为 2 次浮点运算，则单次前向传播的主要矩阵乘加开销为
-\[
-\mathrm{FLOPs}\approx 2(60\times64+64\times64+64\times13)=17536.
-\]
-即使加入偏置加法与 Tanh 激活函数，整体仍处于 \(2\times10^4\) FLOPs 左右的量级。在现代基站 BBU、边缘服务器或通用 x86/ARM 平台上，该规模的纯 MLP 推理通常可由 SIMD/AVX/NEON 等向量化指令高效执行，理论计算负担远低于复杂优化求解器。需要说明的是，本文没有对真实基站硬件或不同 CPU/GPU 平台进行专门推理时延测试；相关文献中 0.3\(\sim\)3.0 ms 的 PPO 调度器推理延迟可作为系统级参考，而上述 FLOPs 估算说明本文所用 Actor 网络本身并非主要计算瓶颈。
+时间复杂度与推理时延（Inference Latency）： 算法的单次前向推断计算复杂度同样为 \(\mathcal{O}(|S|H + H^2 + H|A|)\)。对当前 \(60\)-\(64\)-\(64\)-\(13\) 的 Actor MLP 而言，若按一次乘法和一次加法约计为 2 次浮点运算，则单次前向传播的主要矩阵乘加开销约为 \(\mathrm{FLOPs}\approx 2(60\times64+64\times64+64\times13)=17536\)。即使加入偏置加法与 Tanh 激活函数，整体仍处于 \(2\times10^4\) FLOPs 左右的量级。在现代基站 BBU、边缘服务器或通用 x86/ARM 平台上，该规模的纯 MLP 推理通常可由 SIMD/AVX/NEON 等向量化指令高效执行，理论计算负担远低于复杂优化求解器。需要说明的是，本文没有对真实基站硬件或不同 CPU/GPU 平台进行专门推理时延测试；相关文献中 0.3\(\sim\)3.0 ms 的 PPO 调度器推理延迟可作为系统级参考，而上述 FLOPs 估算说明本文所用 Actor 网络本身并非主要计算瓶颈。
 
 非学习型基线的复杂度也具有不同工程含义。\texttt{fixed\_rr} 只需维护当前轮询索引并执行 \(a_t=t\bmod F\)，调度开销为 \(\mathcal{O}(1)\)，因此适合作为毫秒级实时系统中的极低延迟基线。相比之下，若采用每步读取 \(F=12\) 个子载波的剩余裕度并排序选择最优位置的启发式方法，其典型复杂度为 \(\mathcal{O}(F\log F)\)，同时还可能引入状态读取与同步延迟。PPO/VarPPO 的优势不在于低于确定性轮询的常数级复杂度，而在于以少量在线推理开销换取对高维状态的非线性映射能力；在当前仿真配置下，VarPPO 通过状态感知和奖励塑造获得了更低的 eMBB 中断率与更平滑的剩余裕度分布。若未来面向真实基站部署，仍应进一步测试模型在目标硬件上的端到端推理时延，并考虑通过 FPGA、DSP/NPU 或边缘 GPU 等加速方式降低控制环路时延。
 
@@ -955,11 +926,7 @@ VarPPO 的分布介于 PPO 与 \texttt{fixed\_rr} 之间，均值为 \(0.4263\)�
 
 图~\ref{fig:robustness_ood} 包含 URLLC violation rate 与 eMBB outage rate 两个子图。二者都是错误率指标，因此曲线越低表示越好；图中的训练到达率 \(\lambda=0.5\) 用竖线标出，用于区分分布内与分布外测试区间。
 
-当前结果显示，随着 \(\lambda\) 从 0.2 增加到 1.5，PPO 与 VarPPO 的 URLLC violation rate 基本接近；在 \(\lambda=1.5\) 时二者均约为 0.517。该现象可以从排队稳定性角度解释：本文环境中每个微时隙至多服务一个 URLLC 包，因此服务率上界为 \(\mu=1\) 包/微时隙。当到达率为 \(\lambda=1.5\) 时，系统负载率为
-\[
-\rho=\frac{\lambda}{\mu}=1.5>1.
-\]
-这意味着即使不考虑有限 deadline，队列也已处于经典排队论意义上的不稳定区间，长期队列长度具有发散趋势；在 \(D=3\) 的硬时延约束下，这种容量不足会更快转化为时延违约。因此，极端负载下 URLLC violation rate 的急剧上升并不是某一调度策略的单独失效，而是到达过程超过服务能力后的物理容量边界。相比之下，VarPPO 在 eMBB outage rate 上更稳定，例如在 \(\lambda=1.0,1.2,1.5\) 时分别约为 0.0170、0.0221、0.0286，而 PPO 分别约为 0.0220、0.0270、0.0364。因此，本文将 VarPPO 的主要贡献解释为在流量迁移下改善 eMBB 中断控制，而不是声称其能够在极高负载下消除 URLLC 违约。
+当前结果显示，随着 \(\lambda\) 从 0.2 增加到 1.5，PPO 与 VarPPO 的 URLLC violation rate 基本接近；在 \(\lambda=1.5\) 时二者均约为 0.517。该现象可以从排队稳定性角度解释：本文环境中每个微时隙至多服务一个 URLLC 包，因此服务率上界为 \(\mu=1\) 包/微时隙。当到达率为 \(\lambda=1.5\) 时，系统负载率为 \(\rho=\lambda/\mu=1.5>1\)。这意味着即使不考虑有限 deadline，队列也已处于经典排队论意义上的不稳定区间，长期队列长度具有发散趋势；在 \(D=3\) 的硬时延约束下，这种容量不足会更快转化为时延违约。因此，极端负载下 URLLC violation rate 的急剧上升并不是某一调度策略的单独失效，而是到达过程超过服务能力后的物理容量边界。相比之下，VarPPO 在 eMBB outage rate 上更稳定，例如在 \(\lambda=1.0,1.2,1.5\) 时分别约为 0.0170、0.0221、0.0286，而 PPO 分别约为 0.0220、0.0270、0.0364。因此，本文将 VarPPO 的主要贡献解释为在流量迁移下改善 eMBB 中断控制，而不是声称其能够在极高负载下消除 URLLC 违约。
 
 \section{本章小结}\label{47-ux672cux7ae0ux5c0fux7ed3}
 

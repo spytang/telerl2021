@@ -214,14 +214,14 @@
     { blankdate   a } { \njuline{\qquad\qquad} 年
             \njuline{\qquad} 月 \njuline{\qquad} 日      } {      },
     { colon         } { ：\hskip 0pt minus .4em } { : \c_space_tl },
-    { dept          } { 院系            } { DEPARTMENT            },
+    { dept          } { 院系            } {DEPARTMENT            },
     { figure        } { 图              } { figure                },
     { keywords      } { 关键词          } { KEYWORDS              },
     { lang          } { 中文            } { 英文                  },
     { major         } { 专业            } { SPECIALIZATION        },
     { nju           } { 南京大学        } { Nanjing~ University   },
     { suffix        } {                 } { _en                   },
-    { supv full     } { 指导教师（姓名、职称）   } { MENTOR       },
+    { supv full     } { 指导教师（姓名、职称）   } { MENTOR（Name、Official Rank）       },
     { table         } { 表              } { table                 },
     { title         } { 题目            } { THESIS                },
     { type          } { 本科毕业论文                        } { u }
